@@ -1,0 +1,44 @@
+{
+  "name": "tapis-js",
+  "version": "0.1.0",
+  "description": "VDJServer Tapis",
+  "author": [
+    {
+      "name": "VDJServer",
+      "email": "vdjserver@utsouthwestern.edu"
+    }
+  ],
+  "website": {
+    "url": "https://vdjserver.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://bitbucket.org/vdjserver/tapis-js"
+  },
+  "license": "GNU AGPL V3",
+  "main": "tapis.js",
+  "private": true,
+  "dependencies": {
+    "bull": "^3.20.0",
+    "csv-parser": "^2.3.2",
+    "errorhandler": "1.3.2",
+    "form-data": "2.3.2",
+    "js-yaml": "^3.10.0",
+    "json-approver": "1.0.3",
+    "moment": "2.24.0",
+    "moment-timezone": "0.4.1",
+    "request": "2.88.2",
+    "underscore": "1.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^7.9.0"
+  },
+  "scripts": {
+    "eslint": "eslint",
+    "test": "make test"
+  },
+  "engines": {
+    "node": ">=12.18.3",
+    "npm": ">=6.14.6"
+  }
+}
