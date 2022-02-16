@@ -161,7 +161,7 @@ tapisIO.getToken = function(auth) {
 
 // Refreshes a token and returns it on success
 tapisIO.refreshToken = function(auth) {
-    if (config.shouldInjectError("tapisIO.refreshToken")) return config.performInjectError();
+    //if (config.shouldInjectError("tapisIO.refreshToken")) return config.performInjectError();
 
     var postData = 'grant_type=refresh_token&scope=PRODUCTION&refresh_token=' + auth.refresh_token;
 
@@ -178,4 +178,1003 @@ tapisIO.refreshToken = function(auth) {
     };
 
     return tapisIO.sendTokenRequest(requestSettings, postData);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Metadata operations
+//
+
+tapisIO.getMetadata = function(uuid) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data/' + uuid,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.updateMetadata = function(uuid, name, value, associationIds) {
+
+    var postData = {
+        name: name,
+        value: value
+    };
+    if (associationIds) postData.associationIds = associationIds;
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data/' + uuid,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            console.log('tapisIO.updateMetadata error: ' + errorObject);
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.deleteMetadata = function(accessToken, uuid) {
+
+    var requestSettings = {
+        host:     tapisSettings.hostname,
+        method:   'DELETE',
+        path:     '/meta/v2/data/' + uuid,
+        rejectUnauthorized: false,
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        }
+    };
+
+    return tapisIO.sendRequest(requestSettings, null)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getMetadataPermissions = function(accessToken, uuid) {
+
+    var requestSettings = {
+        host:     tapisSettings.hostname,
+        method:   'GET',
+        path:     '/meta/v2/data/' + uuid + '/pems',
+        rejectUnauthorized: false,
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        }
+    };
+
+    return tapisIO.sendRequest(requestSettings, null)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getMetadataPermissionsForUser = function(accessToken, uuid, username) {
+
+    var requestSettings = {
+        host:     tapisSettings.hostname,
+        method:   'GET',
+        path:     '/meta/v2/data/' + uuid + '/pems/' + username,
+        rejectUnauthorized: false,
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        }
+    };
+
+    return tapisIO.sendRequest(requestSettings, null)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Project operations
+//
+
+// generic metadata query
+tapisIO.getMetadataForType = function(accessToken, projectUuid, type) {
+    //if (config.shouldInjectError("tapisIO.getMetadataForType")) return config.performInjectError();
+
+    var models = [];
+
+    var doFetch = function(offset) {
+        var requestSettings = {
+            host:     tapisSettings.hostname,
+            method:   'GET',
+            path:   '/meta/v2/data?q='
+                + encodeURIComponent('{'
+                                     + '"name": "' + type + '",'
+                                     + '"associationIds": "' + projectUuid + '"'
+                                     + '}')
+                + '&limit=50&offset=' + offset,
+            rejectUnauthorized: false,
+            headers: {
+                'Authorization': 'Bearer ' + accessToken
+            }
+        };
+
+        return tapisIO.sendRequest(requestSettings, null)
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+// generic metadata creation
+tapisIO.createMetadataForType = function(projectUuid, type, value) {
+    if (config.shouldInjectError("tapisIO.createMetadataForType")) return config.performInjectError();
+
+    var postData = {
+        associationIds: [ projectUuid ],
+        name: type,
+        value: value,
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// create metadata record for a private project
+tapisIO.createProjectMetadata = function(project) {
+    if (config.shouldInjectError("tapisIO.createProjectMetadata")) return config.performInjectError();
+
+    var postData = {
+        name: 'private_project',
+        value: project
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getProjectMetadata = function(accessToken, projectUuid) {
+    if (config.shouldInjectError("tapisIO.getProjectMetadata")) return config.performInjectError();
+
+    var requestSettings = {
+        host:     tapisSettings.hostname,
+        method:   'GET',
+        path:     '/meta/v2/data/' + projectUuid,
+        rejectUnauthorized: false,
+        headers: {
+            'Authorization': 'Bearer ' + accessToken
+        }
+    };
+
+    return tapisIO.sendRequest(requestSettings, null)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Job functions
+//
+
+tapisIO.getJobOutput = function(jobId) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/jobs/v2/' + jobId,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.launchJob = function(jobDataString) {
+
+    var postData = JSON.stringify(jobDataString);
+    console.log(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/jobs/v2/'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                },
+            };
+
+            console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Community data
+//
+
+/*
+tapisIO.setCommunityFilePermissions = function(projectUuid, filePath, toCommunity) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            // get all user permissions
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/files/v2/pems/system/' + tapisSettings.storageSystem + '//projects/' + filePath,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(requestObject) {
+            var permissionsList = requestObject.result;
+
+            // remove permissions
+            var promises = [];
+            for (var i = 0; i < permissionsList.length; i++) {
+                var entry = permissionsList[i];
+                if (entry.username != tapisSettings.serviceAccountKey)
+                    promises[i] = tapisIO.setFilePermissions(ServiceAccount.accessToken(), entry.username, 'NONE', false, '/projects/' + filePath);
+            }
+
+            return Promise.allSettled(promises);
+        })
+        .then(function(responseObject) {
+            if (toCommunity) {
+                // guest account READ only
+                var postData = 'username=' + tapisSettings.guestAccountKey + '&permission=READ&recursive=false';
+
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'POST',
+                    path:     '/files/v2/pems/system/' + tapisSettings.storageSystem + '//projects/' + filePath,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Content-Length': Buffer.byteLength(postData),
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    }
+                };
+
+                return tapisIO.sendRequest(requestSettings, postData);
+            } else {
+                return tapisIO.setFilePermissionsForProjectUsers(projectUuid, filePath, false);
+            }
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+}; */
+
+//
+tapisIO.createCommunityCacheDirectory = function(directory, subpath) {
+
+    var cache_dir = '/community/cache/';
+    if (subpath) cache_dir += subpath;
+    var postData = 'action=mkdir&path=' + directory;
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'PUT',
+                path:     '/files/v2/media/system/' + tapisSettings.storageSystem + '/' + cache_dir,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Statistics cache functions
+//
+
+// Statistics cache status
+// this should be a singleton metadata entry owned by service account
+tapisIO.createStatisticsCache = function() {
+    //if (config.shouldInjectError("tapisIO.createStatisticsCache")) return config.performInjectError();
+
+    var postData = {
+        name: 'statistics_cache',
+        value: {
+            enable_cache: false
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getStatisticsCache = function() {
+    //if (config.shouldInjectError("tapisIO.getStatisticsCache")) return config.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q='
+                    + encodeURIComponent(
+                        '{"name":"statistics_cache",'
+                            + ' "owner":"' + ServiceAccount.username + '"}'
+                    )
+                    + '&limit=1'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+}
+
+// create metadata entry for statistics cache for study
+tapisIO.createStatisticsCacheStudyMetadata = function(repository_id, study_id, download_cache_id, should_cache) {
+
+    var postData = {
+        name: 'statistics_cache_study',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            download_cache_id: download_cache_id,
+            should_cache: should_cache,
+            is_cached: false
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of statistics cache entries for study
+tapisIO.getStatisticsCacheStudyMetadata = function(repository_id, study_id, should_cache, is_cached) {
+
+    var models = [];
+
+    var query = '{"name":"statistics_cache_study"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (should_cache === false) query += ',"value.should_cache":false';
+    else if (should_cache === true) query += ',"value.should_cache":true';
+    if (is_cached === false) query += ',"value.is_cached":false';
+    else if (is_cached === true) query += ',"value.is_cached":true';
+    query += '}';
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=50&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                //console.log(requestSettings);
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+// create metadata entry for statistics cache for a single repertoire
+tapisIO.createStatisticsCacheRepertoireMetadata = function(repository_id, study_id, repertoire_id, download_cache_id, should_cache) {
+
+    var postData = {
+        name: 'statistics_cache_repertoire',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            repertoire_id: repertoire_id,
+            download_cache_id: download_cache_id,
+            should_cache: should_cache,
+            is_cached: false,
+            statistics_job_id: null,
+            statistics: null
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of repertoire cache entries
+tapisIO.getStatisticsCacheRepertoireMetadata = function(repository_id, study_id, repertoire_id, should_cache, is_cached, max_limit) {
+
+    var models = [];
+
+    var query = '{"name":"statistics_cache_repertoire"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (repertoire_id) query += ',"value.repertoire_id":"' + repertoire_id + '"';
+    if (should_cache === false) query += ',"value.should_cache":false';
+    else if (should_cache === true) query += ',"value.should_cache":true';
+    if (is_cached === false) query += ',"value.is_cached":false';
+    else if (is_cached === true) query += ',"value.is_cached":true';
+    query += '}';
+
+    var limit = 50;
+    if (max_limit) {
+        if (max_limit < limit) limit = max_limit;
+        if (max_limit < 1) return Promise.resolve([]);
+    }
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=' + limit + '&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    if ((max_limit) && (models.length >= max_limit))
+                        return Promise.resolve(models);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// AIRR Data Commons functions
+//
+
+// the global/system list of ADC repositories
+// this should be a singleton metadata entry owned by service account
+tapisIO.getSystemADCRepositories = function() {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q='
+                    + encodeURIComponent(
+                        '{"name":"adc_system_repositories",'
+                            + ' "owner":"' + ServiceAccount.username + '"}'
+                    )
+                    + '&limit=1'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+}
+
+// ADC download cache status
+// this should be a singleton metadata entry owned by service account
+tapisIO.createADCDownloadCache = function() {
+    //if (config.shouldInjectError("tapisIO.createADCDownloadCache")) return config.performInjectError();
+
+    var postData = {
+        name: 'adc_cache',
+        value: {
+            enable_cache: false
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getADCDownloadCache = function() {
+    //if (config.shouldInjectError("tapisIO.getADCDownloadCache")) return config.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q='
+                    + encodeURIComponent(
+                        '{"name":"adc_cache",'
+                            + ' "owner":"' + ServiceAccount.username + '"}'
+                    )
+                    + '&limit=1'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+}
+
+// create metadata entry for cached ADC study
+tapisIO.createCachedStudyMetadata = function(repository_id, study_id, should_cache) {
+
+    var postData = {
+        name: 'adc_cache_study',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            should_cache: should_cache,
+            is_cached: false,
+            archive_file: null,
+            download_url: null
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of studies cache entries
+tapisIO.getStudyCacheEntries = function(repository_id, study_id, should_cache, is_cached) {
+
+    var models = [];
+
+    var query = '{"name":"adc_cache_study"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (should_cache === false) query += ',"value.should_cache":false';
+    else if (should_cache === true) query += ',"value.should_cache":true';
+    if (is_cached === false) query += ',"value.is_cached":false';
+    else if (is_cached === true) query += ',"value.is_cached":true';
+    query += '}';
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=50&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                //console.log(requestSettings);
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+// create metadata entry for cached ADC rearrangements for a single repertoire
+tapisIO.createCachedRepertoireMetadata = function(repository_id, study_id, repertoire_id, should_cache) {
+
+    var postData = {
+        name: 'adc_cache_repertoire',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            repertoire_id: repertoire_id,
+            should_cache: should_cache,
+            is_cached: false,
+            archive_file: null,
+            download_url: null
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of repertoire cache entries
+tapisIO.getRepertoireCacheEntries = function(repository_id, study_id, repertoire_id, should_cache, not_cached, max_limit) {
+
+    var models = [];
+
+    var query = '{"name":"adc_cache_repertoire"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (repertoire_id) query += ',"value.repertoire_id":"' + repertoire_id + '"';
+    if (should_cache) query += ',"value.should_cache":true';
+    if (not_cached) query += ',"value.is_cached":false';
+    query += '}';
+
+    var limit = 50;
+    if (max_limit) {
+        if (max_limit < limit) limit = max_limit;
+        if (max_limit < 1) return Promise.resolve([]);
+    }
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=' + limit + '&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    if ((max_limit) && (models.length >= max_limit))
+                        return Promise.resolve(models);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
 };

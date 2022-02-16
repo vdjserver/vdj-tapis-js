@@ -25,6 +25,13 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+function parseBoolean(value)
+{
+    if (value == 'true') return true;
+    else if (value == 1) return true;
+    else return false;
+}
+
 module.exports = {
 
     // WSO2 Auth Settings
@@ -36,6 +43,23 @@ module.exports = {
     serviceAccountKey: process.env.VDJ_SERVICE_ACCOUNT,
     serviceAccountSecret: process.env.VDJ_SERVICE_ACCOUNT_SECRET,
 
+    // VDJ Guest Account User
+    guestAccountKey: process.env.VDJ_GUEST_ACCOUNT,
+    guestAccountSecret: process.env.VDJ_GUEST_ACCOUNT_SECRET,
+
+    // VDJ Backbone Location
+    vdjBackbone: process.env.VDJ_BACKBONE_HOST,
+
     // Agave Misc.
     storageSystem: process.env.AGAVE_STORAGE_SYSTEM,
+
+    // host URL for Tapis notifications
+    notifyHost: process.env.AGAVE_NOTIFY_HOST,
+
+    // Email
+    fromAddress: process.env.EMAIL_ADDRESS,
+    replyToAddress: process.env.REPLYTO_EMAIL_ADDRESS,
+
+    // Debug
+    debugConsole: parseBoolean(process.env.DEBUG_CONSOLE)
 };
