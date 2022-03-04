@@ -32,8 +32,7 @@ function parseBoolean(value)
     else return false;
 }
 
-module.exports = {
-
+var tapisSettings = {
     // WSO2 Auth Settings
     clientKey:    process.env.WSO2_CLIENT_KEY,
     clientSecret: process.env.WSO2_CLIENT_SECRET,
@@ -61,5 +60,31 @@ module.exports = {
     replyToAddress: process.env.REPLYTO_EMAIL_ADDRESS,
 
     // Debug
-    debugConsole: parseBoolean(process.env.DEBUG_CONSOLE)
+    debugConsole: parseBoolean(process.env.DEBUG_CONSOLE),
+
+    // Mongodb, meta/v3 settings
+    mongo_hostname: process.env.MONGODB_HOST,
+    mongo_dbname: process.env.MONGODB_DB,
+    mongo_username: process.env.MONGODB_USER,
+    mongo_userSecret: process.env.MONGODB_SECRET,
+    mongo_queryCollection: process.env.MONGODB_QUERY_COLLECTION,
+    mongo_loadCollection: process.env.MONGODB_LOAD_COLLECTION
+};
+module.exports = tapisSettings;
+
+// TODO: not implemented
+// Error injection enabled
+if (tapisSettings.errorInjection) {
+    global.errorInjection = require('./errorInjection');
+    tapisSettings.performInjectError = function() {
+        return global.errorInjection.performInjectError();
+    };
+}
+tapisSettings.injectError = function(error) {
+    if (tapisSettings.errorInjection) return global.errorInjection.setCurrentError(error);
+    else return null;
+};
+tapisSettings.shouldInjectError = function(value) {
+    if (tapisSettings.errorInjection) return global.errorInjection.shouldInjectError(value);
+    else return false;
 };

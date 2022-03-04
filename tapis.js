@@ -41,6 +41,12 @@ tapisIO.tapisSettings = tapisSettings;
 // Models
 var ServiceAccount = require('./serviceAccount');
 tapisIO.serviceAccount = ServiceAccount;
+var GuestAccount = require('./guestAccount');
+tapisIO.guestAccount = GuestAccount;
+
+// Controller
+var authController = require('./authController');
+tapisIO.authController = authController;
 
 //
 // Generic send request
@@ -137,6 +143,42 @@ tapisIO.sendTokenRequest = function(requestSettings, postData) {
     });
 };
 
+//
+// For retrieving unparsed file data
+//
+tapisIO.sendFileRequest = function(requestSettings, postData) {
+
+    return new Promise(function(resolve, reject) {
+        var request = require('https').request(requestSettings, function(response) {
+
+            var output = '';
+
+            response.on('data', function(chunk) {
+                output += chunk;
+            });
+
+            response.on('end', function() {
+
+                // do not attempt to parse
+                resolve(output);
+
+            });
+        });
+
+        request.on('error', function(error) {
+            console.error('TAPIS-API ERROR: Tapis connection error:' + JSON.stringify(error));
+            reject(new Error('Tapis connection error:' + JSON.stringify(error)));
+        });
+
+        if (postData) {
+            // Request body parameters
+            request.write(postData);
+        }
+
+        request.end();
+    });
+};
+
 
 // Fetches a user token based on the supplied auth object
 // and returns the auth object with token data on success
@@ -161,7 +203,7 @@ tapisIO.getToken = function(auth) {
 
 // Refreshes a token and returns it on success
 tapisIO.refreshToken = function(auth) {
-    //if (config.shouldInjectError("tapisIO.refreshToken")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.refreshToken")) return tapisSettings.performInjectError();
 
     var postData = 'grant_type=refresh_token&scope=PRODUCTION&refresh_token=' + auth.refresh_token;
 
@@ -178,6 +220,267 @@ tapisIO.refreshToken = function(auth) {
     };
 
     return tapisIO.sendTokenRequest(requestSettings, postData);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// User operations
+//
+
+tapisIO.createUser = function(user) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createUser")) return tapisSettings.performInjectError();
+
+    var postData = 'username='  + user.username
+                 + '&password=' + user.password
+                 + '&email='    + user.email;
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/profiles/v2/',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/x-www-form-urlencoded',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getAgaveUserProfile = function(accessToken, username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.getAgaveUserProfile")) return tapisSettings.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:   tapisSettings.hostname,
+                method: 'GET',
+                path:   '/profiles/v2/' + username,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + accessToken
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.createUserProfile = function(user, userAccessToken) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createUserProfile")) return tapisSettings.performInjectError();
+
+    var postData = {
+        name: 'profile',
+        value: user
+    };
+
+    postData = JSON.stringify(postData);
+
+    var requestSettings = {
+        host:     tapisSettings.hostname,
+        method:   'POST',
+        path:     '/meta/v2/data',
+        rejectUnauthorized: false,
+        headers: {
+            'Content-Type':   'application/json',
+            'Content-Length': Buffer.byteLength(postData),
+            'Authorization': 'Bearer ' + userAccessToken
+        }
+    };
+
+    return tapisIO.sendRequest(requestSettings, postData)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getUserProfile = function(username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.getUserProfile")) return tapisSettings.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q=' + encodeURIComponent('{"name":"profile","owner":"' + username + '"}') + '&limit=1',
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.createUserVerificationMetadata = function(username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createUserVerificationMetadata")) return tapisSettings.performInjectError();
+
+    var postData = {
+        name: 'userVerification',
+        value: {
+            'username': username,
+            'isVerified': false,
+        },
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getUserVerificationMetadata = function(username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.getUserVerificationMetadata")) return tapisSettings.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q='
+                    + encodeURIComponent(
+                        '{"name":"userVerification",'
+                            + ' "value.username":"' + username + '",'
+                            + ' "owner":"' + ServiceAccount.username + '"'
+                            + '}'
+                    )
+                    + '&limit=1'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.verifyUser = function(username, verificationId) {
+    //if (tapisSettings.shouldInjectError("tapisIO.verifyUser")) return tapisSettings.performInjectError();
+
+    var postData = {
+        name: 'userVerification',
+        value: {
+            'username': username,
+            'isVerified': true,
+        },
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data/' + verificationId,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                },
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.createPasswordResetMetadata = function(username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createPasswordResetMetadata")) return tapisSettings.performInjectError();
+
+    var postData = {
+        name: 'passwordReset',
+        value: {
+            'username': username
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
 };
 
 //
@@ -310,12 +613,165 @@ tapisIO.getMetadataPermissionsForUser = function(accessToken, uuid, username) {
 //
 /////////////////////////////////////////////////////////////////////
 //
+// Meta/V3 operations
+//
+
+tapisIO.performQuery = function(collection, query, projection, page, pagesize, count) {
+
+    return GuestAccount.getToken()
+        .then(function(token) {
+            var mark = false;
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection,
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + GuestAccount.accessToken()
+                }
+            };
+            if (count) {
+                requestSettings['path'] += '/_size';
+            }
+            if (query != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'filter=' + encodeURIComponent(query);
+            }
+            if (projection != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'keys=' + encodeURIComponent(JSON.stringify(projection));
+            }
+            if (page != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'page=' + encodeURIComponent(page);
+            }
+            if (pagesize != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'pagesize=' + encodeURIComponent(pagesize);
+            }
+            var sort = {};
+            if (sort) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'sort=' + encodeURIComponent(JSON.stringify(sort));
+            }
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, null);
+        });
+};
+
+// delete statistics in the database
+tapisIO.deleteDocument = async function(collection, document_id) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'DELETE',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection
+                    + '/' + document_id,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.error(errorObject);
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// File operations
+//
+
+// generic get contents of file, should only be used for small files
+// as contents are brought into memory
+tapisIO.getFileContents = function(filepath) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/files/v2/media/system'
+                    + '/' + tapisSettings.storageSystem + '/'
+                    + filepath,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                },
+            };
+
+            return tapisIO.sendFileRequest(requestSettings, null);
+        })
+        .then(function(fileData) {
+            return Promise.resolve(fileData);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// will delete single file or directory tree
+tapisIO.deleteFile = function(filepath) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'DELETE',
+                path:     '/files/v2/media/system'
+                    + '/' + tapisSettings.storageSystem + '/'
+                    + filepath,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                },
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function() {
+            return Promise.resolve();
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
 // Project operations
 //
 
 // generic metadata query
 tapisIO.getMetadataForType = function(accessToken, projectUuid, type) {
-    //if (config.shouldInjectError("tapisIO.getMetadataForType")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.getMetadataForType")) return tapisSettings.performInjectError();
 
     var models = [];
 
@@ -358,7 +814,7 @@ tapisIO.getMetadataForType = function(accessToken, projectUuid, type) {
 
 // generic metadata creation
 tapisIO.createMetadataForType = function(projectUuid, type, value) {
-    if (config.shouldInjectError("tapisIO.createMetadataForType")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.createMetadataForType")) return tapisSettings.performInjectError();
 
     var postData = {
         associationIds: [ projectUuid ],
@@ -394,7 +850,7 @@ tapisIO.createMetadataForType = function(projectUuid, type, value) {
 
 // create metadata record for a private project
 tapisIO.createProjectMetadata = function(project) {
-    if (config.shouldInjectError("tapisIO.createProjectMetadata")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.createProjectMetadata")) return tapisSettings.performInjectError();
 
     var postData = {
         name: 'private_project',
@@ -428,7 +884,7 @@ tapisIO.createProjectMetadata = function(project) {
 };
 
 tapisIO.getProjectMetadata = function(accessToken, projectUuid) {
-    if (config.shouldInjectError("tapisIO.getProjectMetadata")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.getProjectMetadata")) return tapisSettings.performInjectError();
 
     var requestSettings = {
         host:     tapisSettings.hostname,
@@ -616,7 +1072,7 @@ tapisIO.createCommunityCacheDirectory = function(directory, subpath) {
 // Statistics cache status
 // this should be a singleton metadata entry owned by service account
 tapisIO.createStatisticsCache = function() {
-    //if (config.shouldInjectError("tapisIO.createStatisticsCache")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.createStatisticsCache")) return tapisSettings.performInjectError();
 
     var postData = {
         name: 'statistics_cache',
@@ -652,7 +1108,7 @@ tapisIO.createStatisticsCache = function() {
 };
 
 tapisIO.getStatisticsCache = function() {
-    //if (config.shouldInjectError("tapisIO.getStatisticsCache")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.getStatisticsCache")) return tapisSettings.performInjectError();
 
     return ServiceAccount.getToken()
         .then(function(token) {
@@ -787,8 +1243,7 @@ tapisIO.createStatisticsCacheRepertoireMetadata = function(repository_id, study_
             download_cache_id: download_cache_id,
             should_cache: should_cache,
             is_cached: false,
-            statistics_job_id: null,
-            statistics: null
+            statistics_job_id: null
         }
     };
 
@@ -878,6 +1333,72 @@ tapisIO.getStatisticsCacheRepertoireMetadata = function(repository_id, study_id,
     return doFetch(0);
 };
 
+// get statistics from the database
+tapisIO.getStatistics = function(collection, repertoire_id, data_processing_id) {
+
+    if (! repertoire_id) return Promise.reject(new Error("repertoire_id cannot be null"));
+    var filter = { "repertoire.repertoire_id":repertoire_id };
+    if (data_processing_id) filter['repertoire.data_processing_id'] = data_processing_id;
+
+    return tapisIO.performQuery(collection, JSON.stringify(filter));
+};
+
+// delete statistics in the database
+tapisIO.deleteStatistics = async function(collection, repertoire_id, data_processing_id) {
+
+    var stats_records = await tapisIO.getStatistics(collection, repertoire_id, data_processing_id)
+        .catch(function(error) {
+            return Promise.reject(error);
+        });
+
+    for (let i in stats_records) {
+        await tapisIO.deleteDocument(collection, stats_records[i]['_id']['$oid'])
+            .catch(function(error) {
+                return Promise.reject(error);
+            });
+    }
+
+    return Promise.resolve();
+};
+
+// record statistics in the database
+tapisIO.recordStatistics = function(collection, data) {
+
+    // first delete any entries then insert
+    return tapisIO.deleteStatistics(collection, data['repertoire']['repertoire_id'], data['repertoire']['data_processing_id'])
+        .then(function() {
+            return ServiceAccount.getToken();
+        })
+        .then(function(token) {
+
+            var postData = JSON.stringify(data);
+
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection,
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.error(errorObject);
+            return Promise.reject(errorObject);
+        });
+};
+
 //
 /////////////////////////////////////////////////////////////////////
 //
@@ -919,7 +1440,7 @@ tapisIO.getSystemADCRepositories = function() {
 // ADC download cache status
 // this should be a singleton metadata entry owned by service account
 tapisIO.createADCDownloadCache = function() {
-    //if (config.shouldInjectError("tapisIO.createADCDownloadCache")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.createADCDownloadCache")) return tapisSettings.performInjectError();
 
     var postData = {
         name: 'adc_cache',
@@ -955,7 +1476,7 @@ tapisIO.createADCDownloadCache = function() {
 };
 
 tapisIO.getADCDownloadCache = function() {
-    //if (config.shouldInjectError("tapisIO.getADCDownloadCache")) return config.performInjectError();
+    //if (tapisSettings.shouldInjectError("tapisIO.getADCDownloadCache")) return tapisSettings.performInjectError();
 
     return ServiceAccount.getToken()
         .then(function(token) {
