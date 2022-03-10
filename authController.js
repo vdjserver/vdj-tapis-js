@@ -43,12 +43,12 @@ AuthController.extractToken = function(req) {
     }
     var fields = req['headers']['authorization'].split(' ');
     if (fields.length != 2) {
-        var msg = 'TAPIS-API ERROR: AuthController.userAuthorization - invalid authorization header: ' + req['headers']['authorization'];
+        let msg = 'TAPIS-API ERROR: AuthController.userAuthorization - invalid authorization header: ' + req['headers']['authorization'];
         console.error(msg);
         return false;
     }
     if (fields[0].toLowerCase() != 'bearer') {
-        var msg = 'TAPIS-API ERROR: AuthController.userAuthorization - invalid authorization header: ' + req['headers']['authorization'];
+        let msg = 'TAPIS-API ERROR: AuthController.userAuthorization - invalid authorization header: ' + req['headers']['authorization'];
         console.error(msg);
         return false;
     }

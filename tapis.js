@@ -159,9 +159,16 @@ tapisIO.sendFileRequest = function(requestSettings, postData) {
 
             response.on('end', function() {
 
-                // do not attempt to parse
-                resolve(output);
-
+                if (response.statusCode == 404) {
+                    // file not found
+                    resolve(null);
+                } else if (response.statusCode >= 400) {
+                    // error
+                    reject(new Error('Request error: ' + output));
+                } else {
+                    // do not attempt to parse
+                    resolve(output);
+                }
             });
         });
 
@@ -542,7 +549,7 @@ tapisIO.updateMetadata = function(uuid, name, value, associationIds) {
             return Promise.resolve(responseObject.result);
         })
         .catch(function(errorObject) {
-            console.log('tapisIO.updateMetadata error: ' + errorObject);
+            console.error('tapisIO.updateMetadata error: ' + errorObject);
             return Promise.reject(errorObject);
         });
 };
@@ -938,7 +945,7 @@ tapisIO.getJobOutput = function(jobId) {
 tapisIO.launchJob = function(jobDataString) {
 
     var postData = JSON.stringify(jobDataString);
-    console.log(postData);
+    //console.log(postData);
 
     return ServiceAccount.getToken()
         .then(function(token) {
@@ -955,7 +962,7 @@ tapisIO.launchJob = function(jobDataString) {
                 },
             };
 
-            console.log(requestSettings);
+            //console.log(requestSettings);
 
             return tapisIO.sendRequest(requestSettings, postData);
         })
