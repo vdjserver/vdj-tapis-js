@@ -623,6 +623,7 @@ tapisIO.getMetadataPermissionsForUser = function(accessToken, uuid, username) {
 // Meta/V3 operations
 //
 
+// general query
 tapisIO.performQuery = function(collection, query, projection, page, pagesize, count) {
 
     return GuestAccount.getToken()
@@ -678,6 +679,89 @@ tapisIO.performQuery = function(collection, query, projection, page, pagesize, c
             return tapisIO.sendRequest(requestSettings, null);
         });
 };
+
+// general large queries
+tapisIO.performLargeQuery = function(collection, query, projection, page, pagesize) {
+
+    var postData = query;
+    if (! postData) return Promise.reject(new Error('TAPIS-API ERROR: Empty query passed to tapisIO.performLargeQuery'));
+
+    return GuestAccount.getToken()
+        .then(function(token) {
+            var mark = false;
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection + '/_filter',
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + GuestAccount.accessToken(),
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+            if (projection != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'keys=' + encodeURIComponent(JSON.stringify(projection));
+            }
+            if (page != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'page=' + encodeURIComponent(page);
+            }
+            if (pagesize != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'pagesize=' + encodeURIComponent(pagesize);
+            }
+            var sort = {};
+            if (sort) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'sort=' + encodeURIComponent(JSON.stringify(sort));
+            }
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        });
+};
+
+// General query that performs multiple requests to retrieve all of the results.
+// Will utilize the appropriate function based upon the size of the query.
+// This should not be utilized for queries that may return a large amount of data
+// because the data is pulled into memory.
+tapisIO.performMultiQuery = function(collection, query, projection, start_page, pagesize) {
+    var models = [];
+
+    //console.log(query);
+    var doQuery = function(page) {
+        var queryFunction = tapisIO.performQuery;
+        if (query && query.length > tapisSettings.large_query_size) queryFunction = tapisIO.performLargeQuery;
+        return queryFunction(collection, query, projection, page, pagesize)
+            .then(function(records) {
+                if (tapisSettings.debugConsole) console.log('TAPIS-API INFO: query returned ' + records.length + ' records.');
+                if (records.length == 0) {
+                    return Promise.resolve(models);
+                } else {
+                    models = models.concat(records);
+                    if (records.length < pagesize) return Promise.resolve(models);
+                    else return doQuery(page+1);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    };
+
+    return doQuery(start_page);
+}
 
 // delete statistics in the database
 tapisIO.deleteDocument = async function(collection, document_id) {

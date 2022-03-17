@@ -68,7 +68,12 @@ var tapisSettings = {
     mongo_username: process.env.MONGODB_USER,
     mongo_userSecret: process.env.MONGODB_SECRET,
     mongo_queryCollection: process.env.MONGODB_QUERY_COLLECTION,
-    mongo_loadCollection: process.env.MONGODB_LOAD_COLLECTION
+    mongo_loadCollection: process.env.MONGODB_LOAD_COLLECTION,
+    // max pagesize
+    max_size: 1000,
+    // to deterimine if GET or POST is used for query
+    large_query_size: 2 * 1024,
+    large_lrq_query_size: 50 * 1024
 };
 module.exports = tapisSettings;
 
