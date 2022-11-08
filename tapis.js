@@ -51,7 +51,7 @@ tapisIO.authController = authController;
 //
 // Generic send request
 //
-tapisIO.sendRequest = function(requestSettings, postData) {
+tapisIO.sendRequest = function(requestSettings, postData, allow404, trap408) {
 
     return new Promise(function(resolve, reject) {
         var request = require('https').request(requestSettings, function(response) {
@@ -64,15 +64,29 @@ tapisIO.sendRequest = function(requestSettings, postData) {
 
             response.on('end', function() {
 
-                var responseObject;
+                var responseObject = null;
 
-                if ((response.statusCode >= 400) && (response.statusCode != 404)) {
-                    reject(new Error('Request error: ' + output));
-                } else if (output.length == 0) {
-                    resolve(null);
-                } else if (output && jsonApprover.isJSON(output)) {
+                if (output && jsonApprover.isJSON(output))
                     responseObject = JSON.parse(output);
-                    resolve(responseObject);
+
+                // reject on errors
+                if (response.statusCode >= 400) {
+                    //console.log(response.statusCode, allow404, trap408);
+                    if (response.statusCode == 404) {
+                        if (!allow404) return reject(new Error('response code: ' + response.statusCode + ', request error: ' + output));
+                    } else if (trap408 && (response.statusCode == 408)) {
+                        // Tapis will return a JSON object with the 408 code
+                        return reject(responseObject);
+                    } else {
+                        return reject(new Error('response code: ' + response.statusCode + ', request error: ' + output));
+                    }
+                }
+
+                // process output
+                if (output.length == 0) return resolve(null);
+
+                if (jsonApprover.isJSON(output)) {
+                    return resolve(responseObject);
                 } else {
                     console.error('TAPIS-API ERROR: Tapis response is not json: ' + output);
                     reject(new Error('Tapis response is not json: ' + output));
@@ -227,6 +241,67 @@ tapisIO.refreshToken = function(auth) {
     };
 
     return tapisIO.sendTokenRequest(requestSettings, postData);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Notifications
+//
+
+// send a notification
+tapisIO.sendNotification = function(notification, data) {
+
+    // pull out host and path from URL
+    // TODO: handle http/https
+    var fields = notification['url'].split('://');
+    fields = fields[1].split('/');
+    var host = fields[0];
+    fields = notification['url'].split(host);
+    var path = fields[1];
+
+    var postData = null;
+    var method = 'GET';
+    if (data) {
+        // put data in request params
+        if (notification["method"] == 'GET') {
+            method = 'GET';
+
+            // check if URL already has some request params
+            var mark;
+            if (path.indexOf('?') >= 0) mark = '&';
+            else mark = '?';
+
+            var keys = Object.keys(data);
+            for (var p = 0; p < keys.length; ++p) {
+                path += mark;
+                path += keys[p] + '=' + encodeURIComponent(data[keys[p]]);
+                mark = '&';
+            }
+        } else {
+            method = 'POST';
+            postData = JSON.stringify(data);
+        }
+    }
+
+    var requestSettings = {
+        host:     host,
+        method:   method,
+        path:     path,
+        rejectUnauthorized: false,
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept':   'application/json'
+        }
+    };
+
+    if (postData) {
+        requestSettings['headers']['Content-Length'] = Buffer.byteLength(postData);
+    }
+
+    //console.log(requestSettings);
+
+    return tapisIO.sendRequest(requestSettings, postData);
 };
 
 //
@@ -510,7 +585,7 @@ tapisIO.getMetadata = function(uuid) {
                 }
             };
 
-            return tapisIO.sendRequest(requestSettings, null);
+            return tapisIO.sendRequest(requestSettings, null, true);
         })
         .then(function(responseObject) {
             return Promise.resolve(responseObject.result);
@@ -674,9 +749,18 @@ tapisIO.performQuery = function(collection, query, projection, page, pagesize, c
                 requestSettings['path'] += 'sort=' + encodeURIComponent(JSON.stringify(sort));
             }
 
-            //console.log(requestSettings);
+            console.log(requestSettings);
 
-            return tapisIO.sendRequest(requestSettings, null);
+            return tapisIO.sendRequest(requestSettings, null, false, true);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            console.log('tapisIO.performQuery');
+            //console.log(errorObject);
+            //if (errorObject['http status code'] == 408) console.log('got timeout');
+            return Promise.reject(errorObject);
         });
 };
 
@@ -729,7 +813,16 @@ tapisIO.performLargeQuery = function(collection, query, projection, page, pagesi
 
             //console.log(requestSettings);
 
-            return tapisIO.sendRequest(requestSettings, postData);
+            return tapisIO.sendRequest(requestSettings, postData, false, true);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            console.log('tapisIO.performLargeQuery');
+            //console.log(errorObject);
+            //if (errorObject['http status code'] == 408) console.log('got timeout');
+            return Promise.reject(errorObject);
         });
 };
 
@@ -763,7 +856,140 @@ tapisIO.performMultiQuery = function(collection, query, projection, start_page, 
     return doQuery(start_page);
 }
 
-// delete statistics in the database
+// general aggregation
+tapisIO.performAggregation = function(collection, aggregation, query, field, page, pagesize) {
+
+    return GuestAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection + '/_aggrs/' + aggregation,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer ' + GuestAccount.accessToken()
+                }
+            };
+
+            requestSettings['path'] += '?avars=';
+            requestSettings['path'] += encodeURIComponent('{"match":' + query + ',"field":"' + field + '"}');
+            var mark = true;
+
+            if (page != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'page=' + encodeURIComponent(page);
+            }
+            if (pagesize != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'pagesize=' + encodeURIComponent(pagesize);
+            }
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, null, false, true);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.log('tapisIO.performAggregation');
+            //console.log(errorObject);
+            //if (errorObject['http status code'] == 408) console.log('got timeout');
+            return Promise.reject(errorObject);
+        });
+};
+
+// general large aggregation
+tapisIO.performLargeAggregation = function(collection, aggregation, query, field, page, pagesize) {
+
+    var postData = '{"match":' + query + ',"field":"' + field + '"}';
+    //console.log(postData);
+
+    return GuestAccount.getToken()
+        .then(function(token) {
+            var mark = false;
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection + '/_aggrs/' + aggregation,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'Authorization': 'Bearer ' + GuestAccount.accessToken(),
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+            if (page != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'page=' + encodeURIComponent(page);
+            }
+            if (pagesize != null) {
+                if (mark) requestSettings['path'] += '&';
+                else requestSettings['path'] += '?';
+                mark = true;
+                requestSettings['path'] += 'pagesize=' + encodeURIComponent(pagesize);
+            }
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData, false, true);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.log('tapisIO.performLargeAggregation');
+            //console.log(errorObject);
+            //if (errorObject['http status code'] == 408) console.log('got timeout');
+            return Promise.reject(errorObject);
+        });
+};
+
+// record info about ADC query performed
+tapisIO.recordQuery = function(query) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+
+            var postData = JSON.stringify(query);
+
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/query',
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            // TAPIS BUG: we eat the error here to avoid node termination
+            console.error('TAPIS-API ERROR: (tapisIO.recordQuery) error: ' + errorObject);
+            return Promise.resolve(null);
+        });
+};
+
+// delete document in the database
 tapisIO.deleteDocument = async function(collection, document_id) {
 
     return ServiceAccount.getToken()
@@ -791,6 +1017,231 @@ tapisIO.deleteDocument = async function(collection, document_id) {
             console.error(errorObject);
             return Promise.reject(errorObject);
         });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// ADC Extension API for asynchronous queries
+// LRQ Meta/V3 operations
+//
+
+tapisIO.performAsyncQuery = function(collection, query, projection, notification) {
+
+    var postData = {
+        name: "query",
+        queryType: "SIMPLE",
+        query: [ query ]
+    };
+    if (notification) postData['notification'] = notification;
+    postData = JSON.stringify(postData);
+    console.log(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var mark = false;
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection + '/_lrq',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        });
+};
+
+tapisIO.performAsyncAggregation = function(name, collection, query, notification) {
+
+    var postData = {
+        name: name,
+        queryType: "AGGREGATION",
+        query: query
+    };
+    if (notification) postData['notification'] = notification;
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var mark = false;
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection + '/_lrq',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            console.log(requestSettings);
+            console.log(postData);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.error('performAsyncAggregation: ' + errorObject);
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getLRQStatus = function(lrq_id) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v3/LRQ/vdjserver.org/' + lrq_id,
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, null);
+        });
+};
+
+// create metadata record for async query
+tapisIO.createAsyncQueryMetadata = function(endpoint, collection, body, query_aggr, count_aggr) {
+
+    var postData = {
+        name: 'async_query',
+        value: {
+            endpoint: endpoint,
+            collection: collection,
+            lrq_id: null,
+            status: 'PENDING',
+            message: null,
+            notification: null,
+            raw_file: null,
+            final_file: null,
+            download_url: null,
+            body: body,
+            query_aggr: query_aggr,
+            count_aggr: count_aggr
+        }
+    };
+    if (body['notification']) postData['value']['notification'] = body['notification'];
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getAsyncQueryMetadata = function(lrq_id) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/meta/v2/data?q='
+                    + encodeURIComponent(
+                        '{"name":"async_query",'
+                            + ' "value.lrq_id":"' + lrq_id + '"}'
+                    )
+                    + '&limit=1'
+                ,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getAsyncQueryMetadataWithStatus = function(status) {
+
+    var models = [];
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(
+                            '{"name":"async_query",'
+                                + ' "value.status":"' + status
+                                + '"}')
+                        + '&limit=50&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                return tapisIO.sendRequest(requestSettings, null);
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
 };
 
 //
@@ -988,6 +1439,75 @@ tapisIO.getProjectMetadata = function(accessToken, projectUuid) {
     };
 
     return tapisIO.sendRequest(requestSettings, null)
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Postit operations
+//
+
+tapisIO.createPublicFilePostit = function(url, unlimited, maxUses, lifetime) {
+
+    var postData = {
+        url: url,
+        method: 'GET'
+    };
+    if (unlimited) {
+        postData["unlimited"] = true;
+    } else {
+        postData["maxUses"] = maxUses;
+        postData["lifetime"] = lifetime;
+    }
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/postits/v2/',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+tapisIO.getPostit = function(uuid) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/postits/v2/listing/' + uuid,
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null);
+        })
         .then(function(responseObject) {
             return Promise.resolve(responseObject.result);
         })

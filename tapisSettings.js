@@ -33,7 +33,12 @@ function parseBoolean(value)
 }
 
 var tapisSettings = {
-    // WSO2 Auth Settings
+    // Tapis V3 Auth Settings
+    clientKeyV3:    process.env.TAPIS_V3_CLIENT_KEY,
+    clientSecretV3: process.env.TAPIS_V3_CLIENT_SECRET,
+    hostnameV3:     process.env.TAPIS_V3_HOST,
+
+    // WSO2 Auth Settings (Tapis V2)
     clientKey:    process.env.WSO2_CLIENT_KEY,
     clientSecret: process.env.WSO2_CLIENT_SECRET,
     hostname:     process.env.WSO2_HOST,
