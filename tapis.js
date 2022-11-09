@@ -749,18 +749,9 @@ tapisIO.performQuery = function(collection, query, projection, page, pagesize, c
                 requestSettings['path'] += 'sort=' + encodeURIComponent(JSON.stringify(sort));
             }
 
-            console.log(requestSettings);
+            //console.log(requestSettings);
 
             return tapisIO.sendRequest(requestSettings, null, false, true);
-        })
-        .then(function(responseObject) {
-            return Promise.resolve(responseObject.result);
-        })
-        .catch(function(errorObject) {
-            console.log('tapisIO.performQuery');
-            //console.log(errorObject);
-            //if (errorObject['http status code'] == 408) console.log('got timeout');
-            return Promise.reject(errorObject);
         });
 };
 
@@ -814,15 +805,6 @@ tapisIO.performLargeQuery = function(collection, query, projection, page, pagesi
             //console.log(requestSettings);
 
             return tapisIO.sendRequest(requestSettings, postData, false, true);
-        })
-        .then(function(responseObject) {
-            return Promise.resolve(responseObject.result);
-        })
-        .catch(function(errorObject) {
-            console.log('tapisIO.performLargeQuery');
-            //console.log(errorObject);
-            //if (errorObject['http status code'] == 408) console.log('got timeout');
-            return Promise.reject(errorObject);
         });
 };
 
