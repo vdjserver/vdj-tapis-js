@@ -942,7 +942,8 @@ tapisIO.recordQuery = function(query) {
     return ServiceAccount.getToken()
         .then(function(token) {
 
-            var postData = JSON.stringify(query);
+            // TAPIS BUG: POST gives error unless array
+            var postData = JSON.stringify([query]);
 
             var requestSettings = {
                 host:     tapisSettings.hostname,
