@@ -29,10 +29,10 @@ var tapisIO  = {};
 module.exports = tapisIO;
 
 // Node Libraries
-//var Q = require('q');
 var _ = require('underscore');
 var jsonApprover = require('json-approver');
 var FormData = require('form-data');
+const axios = require('axios');
 
 // Settings
 var tapisSettings = require('./tapisSettings');
