@@ -74,6 +74,7 @@ tapisIO.sendRequest = function(requestSettings, postData, allow404, trap408) {
                     //console.log(response.statusCode, allow404, trap408);
                     if (response.statusCode == 404) {
                         if (!allow404) return reject(new Error('response code: ' + response.statusCode + ', request error: ' + output));
+                        else responseObject['statusCode'] = 404;
                     } else if (trap408 && (response.statusCode == 408)) {
                         // Tapis will return a JSON object with the 408 code
                         return reject(responseObject);
@@ -303,6 +304,37 @@ tapisIO.sendNotification = function(notification, data) {
 
     return tapisIO.sendRequest(requestSettings, postData);
 };
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Apps
+//
+tapisIO.getApplication = function(name) {
+    //if (tapisSettings.shouldInjectError("tapisIO.getApplication")) return tapisSettings.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'GET',
+                path:     '/apps/v2/' + name,
+                rejectUnauthorized: false,
+                headers: {
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, null, true);
+        })
+        .then(function(responseObject) {
+            if (responseObject['statusCode'] == 404) return Promise.resolve(responseObject);
+            else return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+}
 
 //
 /////////////////////////////////////////////////////////////////////
@@ -588,7 +620,8 @@ tapisIO.getMetadata = function(uuid) {
             return tapisIO.sendRequest(requestSettings, null, true);
         })
         .then(function(responseObject) {
-            return Promise.resolve(responseObject.result);
+            if (responseObject['statusCode'] == 404) return Promise.resolve(responseObject);
+            else return Promise.resolve(responseObject.result);
         })
         .catch(function(errorObject) {
             return Promise.reject(errorObject);
