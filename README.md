@@ -15,5 +15,12 @@ A valid environment file is required to be provided, the following example comma
 use the `.env` file in the current directory.
 
 ```
-alias tapis-js='docker run --env-file .env -it vdjserver/vdj-tapis-js:latest'
+alias tapis-js='docker run -v $PWD:/work --env-file .env -it vdjserver/vdj-tapis-js:latest'
+```
+
+V3 Meta Load
+============
+
+```
+tapis-js node v3_meta_load.js /work/file.json tapis_meta
 ```
