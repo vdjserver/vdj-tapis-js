@@ -778,7 +778,9 @@ tapisV3.createProjectDirectory = function(directory) {
                 }
             };
 
-            return tapisV3.sendRequest(requestSettings, postData);
+            //console.log(requestSettings);
+
+            return tapisV3.sendRequest(requestSettings);
         });
 };
 
@@ -803,7 +805,7 @@ tapisV3.grantProjectFilePermissions = function(username, project_uuid, filePath)
                 }
             };
 
-            return tapisV3.sendRequest(requestSettings, postData);
+            return tapisV3.sendRequest(requestSettings);
         });
 };
 
