@@ -164,7 +164,7 @@ tapisV3.createRecord = function(collection, data) {
                 }
             };
 
-            console.log(requestSettings);
+            //console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings);
         });
@@ -185,6 +185,31 @@ tapisV3.updateRecord = function(collection, doc_id, data) {
                 url: 'https://' + tapisSettings.hostnameV3 + '/v3/meta/' + tapisSettings.mongo_dbname + '/' + collection + '/' + doc_id,
                 method: 'PUT',
                 data: postData,
+                headers: {
+                    'Accept':   'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
+// raw record delete
+tapisV3.deleteRecord = function(collection, doc_id) {
+    //if (tapisSettings.shouldInjectError("tapisIO.deleteRecord")) return tapisSettings.performInjectError();
+
+    if (!collection) Promise.reject(new Error('collection not specified'));
+    if (!doc_id) Promise.reject(new Error('document id not specified'));
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/meta/' + tapisSettings.mongo_dbname + '/' + collection + '/' + doc_id,
+                method: 'DELETE',
                 headers: {
                     'Accept':   'application/json',
                     'X-Tapis-Token': ServiceAccount.accessToken(),
@@ -308,7 +333,7 @@ tapisV3.performServiceQuery = function(collection, query, projection, page, page
                 }
             };
 
-            console.log(requestSettings);
+            //console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings);
         });
@@ -595,11 +620,11 @@ tapisV3.createProjectMetadata = async function(username, project) {
 
     return tapisV3.createRecord('tapis_meta', postData)
         .then(function(data) {
-            console.log(JSON.stringify(data));
+            //console.log(JSON.stringify(data));
             return tapisV3.getProjectMetadata(username, uuid);
         })
         .then(function(data) {
-            console.log(JSON.stringify(data));
+            //console.log(JSON.stringify(data));
             return Promise.resolve(data[0]);
         });
 };
@@ -608,8 +633,6 @@ tapisV3.createProjectMetadata = async function(username, project) {
 // or single project given uuid
 tapisV3.getProjectMetadata = function(username, project_uuid) {
     //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
-
-    console.log('vdj-tapis (tapisV3) schema:', tapisV3.schema.get_info()['title'], 'version', tapisV3.schema.get_info()['version']);
 
     var filter = { "name": "private_project" };
     if (project_uuid) filter['uuid'] = project_uuid;
@@ -754,6 +777,40 @@ tapisV3.getMetadataForProject = function(project_uuid, meta_uuid) {
     return tapisV3.performMultiServiceQuery('tapis_meta', query);
 };
 
+// delete metadata with uuid associated with project
+// security: it is assumed user has project access
+tapisV3.deleteMetadataForProject = async function(project_uuid, meta_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.deleteMetadataForProject")) return tapisSettings.performInjectError();
+
+    // get the record
+    var metadata = await tapisV3.getMetadataForProject(project_uuid, meta_uuid)
+        .catch(function(error) { Promise.reject(error); });
+
+    // this shouldn't happen
+    if (!metadata) return Promise.reject(new Error('empty query response.'));
+    // 404 not found
+    if (metadata.length == 0) return Promise.resolve(null);
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid.'));
+    // eliminate array
+    metadata = metadata[0];
+    // is it really project metadata?
+    // either it is the project record itself or project uuid must be in associationIds
+    if (project_uuid != meta_uuid) {
+        if (!metadata['associationIds']) return Promise.reject(new Error('metadata record is not associated with project.'));
+        if (!metadata['associationIds'].includes(project_uuid)) return Promise.reject(new Error('metadata record is not associated with project.'));
+    }
+    // it better have a doc id
+    if (!metadata['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
+    if (!metadata['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
+
+    // delete it
+    await tapisV3.deleteRecord('tapis_meta', metadata['_id']['$oid'])
+        .catch(function(error) { Promise.reject(error); });
+
+    return Promise.resolve(true);
+};
+
 //
 /////////////////////////////////////////////////////////////////////
 //
@@ -839,6 +896,54 @@ tapisV3.getProjectFileMetadataByURL = function(project_uuid, file_url) {
     return tapisV3.queryMetadataForProject(project_uuid, 'project_file', filter);
 };
 
+tapisV3.createProjectFilePostit = function(project_uuid, obj) {
+
+    var postData = {
+    };
+    if (obj['allowedUses']) postData['allowedUses'] = obj['allowedUses'];
+    if (obj['validSeconds']) postData['validSeconds'] = obj['validSeconds'];
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/postits/' + tapisSettings.storageSystem + '//projects/' + project_uuid + '/' + obj['path'],
+                method: 'POST',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
+tapisV3.moveProjectFile = function(fromPath, toPath) {
+
+    var postData = {
+        operation: "MOVE",
+        newPath: toPath
+    };
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/ops/' + tapisSettings.storageSystem + fromPath,
+                method: 'PUT',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings, null)
+        });
+};
+
 //
 /////////////////////////////////////////////////////////////////////
 //
@@ -877,7 +982,7 @@ tapisV3.getTapisUserProfile = function(accessToken, username) {
             }
         };
 
-        console.log(requestSettings);
+        //console.log(requestSettings);
         return tapisV3.sendRequest(requestSettings);
 
     } else {
