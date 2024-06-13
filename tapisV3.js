@@ -681,6 +681,10 @@ tapisV3.createMetadataForProject = async function(project_uuid, meta_name, obj) 
     if (tapisV3.schema) {
         let s = tapisV3.schema.spec_for_tapis_name(meta_name);
         if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+        if (obj['value']['vdjserver']) {
+            obj['value']['vdjserver']['vdjserver_uuid'] = uuid;
+            obj['value']['vdjserver']['version'] = tapisV3.schema.get_info()['version'];
+        }
         let error = s.validate_object(metadata, ['x-vdjserver']);
         if (error) return Promise.reject('Invalid object with tapis name: ' + meta_name + ', error: ' + JSON.stringify(error));
     }
@@ -809,6 +813,28 @@ tapisV3.deleteMetadataForProject = async function(project_uuid, meta_uuid) {
         .catch(function(error) { Promise.reject(error); });
 
     return Promise.resolve(true);
+};
+
+// delete all metadata of given name associated with project
+// CAREFUL! Never externally exposed, used internally in limited scenarios
+tapisV3.deleteAllProjectMetadataForName = async function(project_uuid, meta_name) {
+    //if (tapisSettings.shouldInjectError("tapisV3.deleteAllMetadataForProject")) return tapisSettings.performInjectError();
+
+    if (!project_uuid) Promise.reject(new Error('project_uuid not specified'));
+    if (!meta_name) Promise.reject(new Error('meta_name not specified'));
+
+    var metadataList = await tapisV3.queryMetadataForProject(project_uuid, meta_name)
+    for (let i = 0; i < metadataList.length; ++i) {
+        if (!metadataList[i]['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
+        if (!metadataList[i]['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
+    }
+
+    for (let i = 0; i < metadataList.length; ++i) {
+        await tapisV3.deleteRecord('tapis_meta', metadataList[i]['_id']['$oid'])
+            .catch(function(error) { Promise.reject(error); });
+    }
+
+    return Promise.resolve(metadataList.length);
 };
 
 //
@@ -941,6 +967,45 @@ tapisV3.moveProjectFile = function(fromPath, toPath) {
             };
 
             return tapisV3.sendRequest(requestSettings, null)
+        });
+};
+
+tapisV3.uploadFileToProjectTempDirectory = function(projectUuid, filename, filedata) {
+
+    // filedata should be data stored in a Blob()
+    var form = new FormData();
+    form.append('file', filedata);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/ops/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/deleted/' + filename,
+                method: 'POST',
+                data: form,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'multipart/form-data',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+        });
+};
+
+tapisV3.getProjectFileContents = function(projectUuid, fileName) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/content/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/files/' + fileName,
+                method: 'GET',
+                headers: {
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
         });
 };
 
