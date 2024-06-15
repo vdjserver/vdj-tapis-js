@@ -29,7 +29,8 @@ var tapisSettings = require('./tapisSettings');
 var ServiceAccountV3 = {
     username: tapisSettings.serviceAccountKey,
     password: tapisSettings.serviceAccountSecret,
-    tapisToken: null
+    tapisToken: null,
+    created: null
 };
 
 module.exports = ServiceAccountV3;
@@ -42,9 +43,21 @@ ServiceAccountV3.getToken = function() {
 
     var that = this;
 
+    // TODO: simple expire hack, we should use Tapis instead
+    if (this.tapisToken) {
+        if (!this.created) {
+            this.created = new Date();
+        } else {
+            let now = new Date();
+            let diffMs = (now - this.created);
+            if (diffMs < 36000000) return Promise.resolve(this.tapisToken); // 1 hour
+        }
+    }
+
     return tapisV3.getToken(this)
         .then(function(responseObject) {
             that.tapisToken = new TapisTokenV3(responseObject.access_token);
+            that.created = new Date();
             return Promise.resolve(that.tapisToken);
         })
         .catch(function(errorObject) {
