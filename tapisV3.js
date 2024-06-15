@@ -65,10 +65,12 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
             if (allow404 && (error.response.status == 404)) {
                 return Promise.resolve(null);
             }
-            msg = 'Tapis request failed with error: ' + JSON.stringify(error.response.data);
+            if (error.response && error.response.data) msg = 'Tapis request failed with error: ' + JSON.stringify(error.response.data);
+            else msg = 'Tapis request failed with error: ' + JSON.stringify(error);
             return Promise.reject(new Error(msg));
         });
 
+    //console.log(response);
     //console.log(response.data);
     //console.log(response.status);
     //console.log(response.statusText);
