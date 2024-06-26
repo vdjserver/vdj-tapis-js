@@ -618,8 +618,6 @@ tapisV3.createProjectMetadata = async function(username, project) {
         if (error) return Promise.reject('Invalid object with tapis name: private_project, error: ' + JSON.stringify(error));
     }
 
-    //postData = JSON.stringify(postData);
-
     return tapisV3.createRecord('tapis_meta', postData)
         .then(function(data) {
             //console.log(JSON.stringify(data));
@@ -817,6 +815,129 @@ tapisV3.deleteMetadataForProject = async function(project_uuid, meta_uuid) {
     return Promise.resolve(true);
 };
 
+// add user permission to project
+// security: it is assumed user has project access
+tapisV3.addProjectPermissionForUser = async function(project_uuid, username) {
+    //if (tapisSettings.shouldInjectError("tapisV3.addProjectPermission")) return tapisSettings.performInjectError();
+
+    // retrieve by uuid
+    var filter = { "uuid": project_uuid };
+    var query = JSON.stringify(filter);
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // do some checks
+
+    // this shouldn't happen
+    if (!metadata) return Promise.reject(new Error('empty query response.'));
+    // 404 not found
+    if (metadata.length == 0) return Promise.resolve(null);
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid.'));
+    // eliminate array
+    metadata = metadata[0];
+    // it better have a doc id
+    if (!metadata['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
+    if (!metadata['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
+
+    // check that username has not already been added
+    var found = false;
+    for (let i in metadata['permission']) {
+        if (metadata['permission'][i]['username'] == username) found = true;
+    }
+    if (found) return Promise.resolve(metadata);
+
+    // add and save
+    metadata['permission'].push({ "username": username, permission: { read: true, write: true } });
+    metadata['lastUpdated'] = new Date().toISOString();
+
+    // validate
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(metadata['name']);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + metadata['name']);
+        let error = s.validate_object(metadata, ['x-vdjserver']);
+        if (error) return Promise.reject('Invalid object with tapis name: ' + metadata['name'] + ', error: ' + JSON.stringify(error));
+    }
+
+    // finally do the update
+    await tapisV3.updateRecord('tapis_meta', metadata['_id']['$oid'], metadata)
+        .catch(function(error) { Promise.reject(error); });
+
+    // retrieve again and return
+    filter = { "uuid": project_uuid };
+    query = JSON.stringify(filter);
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, after update, multiple records have the same uuid.'));
+
+    return Promise.resolve(metadata[0]);
+};
+
+// revoke user permission to project
+// security: it is assumed user has project access
+tapisV3.removeProjectPermissionForUser = async function(project_uuid, username) {
+    //if (tapisSettings.shouldInjectError("tapisV3.removeProjectPermissionForUser")) return tapisSettings.performInjectError();
+
+    // retrieve by uuid
+    var filter = { "uuid": project_uuid };
+    var query = JSON.stringify(filter);
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // do some checks
+
+    // this shouldn't happen
+    if (!metadata) return Promise.reject(new Error('empty query response.'));
+    // 404 not found
+    if (metadata.length == 0) return Promise.resolve(null);
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid.'));
+    // eliminate array
+    metadata = metadata[0];
+    // it better have a doc id
+    if (!metadata['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
+    if (!metadata['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
+
+    // new permission list without user
+    var found = false;
+    var new_permissions = [];
+    for (let i in metadata['permission']) {
+        if (metadata['permission'][i]['username'] == username) found = true;
+        else new_permissions.push(metadata['permission'][i]);
+    }
+    // no need to update if username was not in the list
+    if (!found) return Promise.resolve(metadata);
+
+    // save
+    metadata['permission'] = new_permissions;
+    metadata['lastUpdated'] = new Date().toISOString();
+
+    // validate
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(metadata['name']);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + metadata['name']);
+        let error = s.validate_object(metadata, ['x-vdjserver']);
+        if (error) return Promise.reject('Invalid object with tapis name: ' + metadata['name'] + ', error: ' + JSON.stringify(error));
+    }
+
+    // finally do the update
+    await tapisV3.updateRecord('tapis_meta', metadata['_id']['$oid'], metadata)
+        .catch(function(error) { Promise.reject(error); });
+
+    // retrieve again and return
+    filter = { "uuid": project_uuid };
+    query = JSON.stringify(filter);
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, after update, multiple records have the same uuid.'));
+
+    return Promise.resolve(metadata[0]);
+};
+
 // delete all metadata of given name associated with project
 // CAREFUL! Never externally exposed, used internally in limited scenarios
 tapisV3.deleteAllProjectMetadataForName = async function(project_uuid, meta_name) {
@@ -883,6 +1004,25 @@ tapisV3.grantProjectFilePermissions = function(username, project_uuid, filePath)
                 url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/permissions/' + tapisSettings.storageSystem + '//projects/' + project_uuid + '/' + filePath,
                 method: 'POST',
                 data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
+tapisV3.removeProjectFilePermissions = function(username, project_uuid, filePath) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/permissions/' + tapisSettings.storageSystem + '//projects/' + project_uuid + '/' + filePath + '?username=' + username,
+                method: 'DELETE',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
@@ -1067,6 +1207,53 @@ tapisV3.getTapisUserProfile = function(accessToken, username) {
         //console.log(requestSettings);
         return tapisV3.sendRequest(requestSettings);
     }
+};
+
+tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
+
+    var valueData = {
+        feedbackMessage: feedback,
+    };
+
+    if (username.length > 0) {
+        valueData.username = username;
+    }
+
+    if (email.length > 0) {
+        valueData.email = email;
+    }
+
+    var date = new Date().toISOString();
+    var uuid = uuidv4();
+    var postData = {
+        uuid: uuid,
+        associationIds: [],
+        owner: ServiceAccount.username,
+        created: date,
+        lastUpdated: date,
+        name: 'feedback',
+        value: valueData
+    };
+
+    // validate
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name('feedback');
+        if (!s) return Promise.reject('Cannot find spec with tapis name: feedback');
+        let error = s.validate_object(postData, ['x-vdjserver']);
+        if (error) return Promise.reject('Invalid object with tapis name: feedback, error: ' + JSON.stringify(error));
+    }
+
+    return tapisV3.createRecord('tapis_meta', postData)
+        .then(function(data) {
+            //console.log(JSON.stringify(data));
+            var filter = { "uuid": uuid };
+            var query = JSON.stringify(filter);
+            return tapisV3.performServiceQuery('tapis_meta', query);
+        })
+        .then(function(data) {
+            //console.log(JSON.stringify(data));
+            return Promise.resolve(data[0]);
+        });
 };
 
 //
