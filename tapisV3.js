@@ -45,6 +45,14 @@ tapisV3.serviceAccount = ServiceAccount;
 var GuestAccount = require('./guestAccountV3');
 tapisV3.guestAccount = GuestAccount;
 
+// Controllers
+var AuthController = require('./authControllerV3');
+tapisV3.authController = AuthController;
+
+// Error logging to Slack
+var webhookIO = require('./webhookIO');
+tapisV3.webhookIO = webhookIO;
+
 // attach schema to be used for validation tapis meta objects
 tapisV3.init_with_schema = function(schema) {
     if (schema) {
@@ -172,6 +180,59 @@ tapisV3.createRecord = function(collection, data) {
         });
 };
 
+// document creation that follows tapis_meta schema
+// use the project specific functions for project metadata
+tapisV3.createDocument = function(name, value, associationIds, owner, extras, skip_validate) {
+    //if (tapisSettings.shouldInjectError("tapisV3.createDocument")) return tapisSettings.performInjectError();
+
+    if (!name) return Promise.reject(new Error('name cannot be null for document.'));
+
+    var date = new Date().toISOString();
+    var uuid = uuidv4();
+    var postData = {
+        uuid: uuid,
+        associationIds: [],
+        owner: ServiceAccount.username,
+        created: date,
+        lastUpdated: date,
+        name: name,
+        value: {}
+    };
+    if (value) postData['value'] = value;
+    if (associationIds) postData['associationIds'] = associationIds;
+    if (owner) postData['owner'] = owner;
+    if (extras) {
+        for (let i in extras) {
+            postData[i] = extras[i];
+        }
+    }
+
+    // validate
+    if (!skip_validate) {
+        if (tapisV3.schema) {
+            let s = tapisV3.schema.spec_for_tapis_name(postData['name']);
+            if (!s) return Promise.reject('Cannot find spec with tapis name: ' + postData['name']);
+            let error = s.validate_object(postData, ['x-vdjserver']);
+            if (error) return Promise.reject('Invalid object with tapis name: ' + postData['name'] + ', error: ' + JSON.stringify(error));
+        } else return Promise.reject('Schema is not set for Tapis V3.');
+    }
+
+    var collection = 'tapis_meta';
+
+    return tapisV3.createRecord(collection, postData)
+        .then(function(data) {
+            console.log(JSON.stringify(data));
+            var filter = { "uuid": postData['uuid'] };
+            var query = JSON.stringify(filter);
+            return tapisV3.performMultiServiceQuery(collection, query);
+        })
+        .then(function(data) {
+            if (data.length != 1) return Promise.reject(new Error('Internal error: new document query with uuid: ' + postData['uuid'] + ' returned incorrect number of documents (' + data.length + ' != 1)'));
+            console.log(JSON.stringify(data));
+            return Promise.resolve(data[0]);
+        });
+};
+
 // raw record replacement
 tapisV3.updateRecord = function(collection, doc_id, data) {
     //if (tapisSettings.shouldInjectError("tapisIO.updateRecord")) return tapisSettings.performInjectError();
@@ -198,6 +259,70 @@ tapisV3.updateRecord = function(collection, doc_id, data) {
 
             return tapisV3.sendRequest(requestSettings);
         });
+};
+
+// document updated that follows tapis_meta schema
+// use the project specific functions for project metadata
+// security: it is assumed user has access
+tapisV3.updateDocument = async function(meta_uuid, name, value, associationIds, owner, extras, skip_validate) {
+    //if (tapisSettings.shouldInjectError("tapisV3.updateDocument")) return tapisSettings.performInjectError();
+
+    // retrieve by uuid
+    var filter = { "uuid": meta_uuid };
+    var query = JSON.stringify(filter);
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // do some checks
+
+    // this shouldn't happen
+    if (!metadata) return Promise.reject(new Error('empty query response.'));
+    // 404 not found
+    if (metadata.length == 0) return Promise.resolve(null);
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid.'));
+    // eliminate array
+    metadata = metadata[0];
+    // it better have a doc id
+    if (!metadata['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
+    if (!metadata['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
+
+    // update
+    if (name) metadata['name'] = name;
+    if (value) metadata['value'] = value;
+    if (associationIds) metadata['associationIds'] = associationIds;
+    if (owner) metadata['owner'] = owner;
+    if (extras) {
+        for (let i in extras) {
+            metadata[i] = extras[i];
+        }
+    }
+    metadata['lastUpdated'] = new Date().toISOString();
+
+    // validate
+    if (!skip_validate) {
+        if (tapisV3.schema) {
+            let s = tapisV3.schema.spec_for_tapis_name(metadata['name']);
+            if (!s) return Promise.reject('Cannot find spec with tapis name: ' + metadata['name']);
+            let error = s.validate_object(metadata, ['x-vdjserver']);
+            if (error) return Promise.reject('Invalid object with tapis name: ' + metadata['name'] + ', error: ' + JSON.stringify(error));
+        } else return Promise.reject('Schema is not set for Tapis V3.');
+    }
+
+    // finally do the update
+    await tapisV3.updateRecord('tapis_meta', metadata['_id']['$oid'], metadata)
+        .catch(function(error) { Promise.reject(error); });
+
+    // retrieve again and return
+    filter = { "uuid": meta_uuid };
+    query = JSON.stringify(filter);
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+        .catch(function(error) { Promise.reject(error); });
+
+    // yikes!
+    if (metadata.length != 1) return Promise.reject(new Error('internal error, after update, multiple records have the same uuid.'));
+
+    return Promise.resolve(metadata[0]);
 };
 
 // raw record delete
@@ -1380,6 +1505,300 @@ tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire
 
     return tapisV3.performMultiServiceQuery('tapis_meta', query);
 };
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Statistics cache functions
+//
+
+// Statistics cache status
+// this should be a singleton metadata entry owned by service account
+tapisV3.createStatisticsCache = function() {
+    //if (tapisSettings.shouldInjectError("tapisV3.createStatisticsCache")) return tapisSettings.performInjectError();
+
+    var meta_name = 'statistics_cache';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
+
+tapisV3.getStatisticsCache = function() {
+    //if (tapisSettings.shouldInjectError("tapisV3.getStatisticsCache")) return tapisSettings.performInjectError();
+
+    var filter = { "name": "statistics_cache", "owner": ServiceAccount.username };
+    var query = JSON.stringify(filter);
+    return tapisV3.performServiceQuery('tapis_meta', query);
+}
+
+/*
+// create metadata entry for statistics cache for study
+tapisIO.createStatisticsCacheStudyMetadata = function(repository_id, study_id, download_cache_id, should_cache) {
+
+    var postData = {
+        name: 'statistics_cache_study',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            download_cache_id: download_cache_id,
+            should_cache: should_cache,
+            is_cached: false
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of statistics cache entries for study
+tapisIO.getStatisticsCacheStudyMetadata = function(repository_id, study_id, should_cache, is_cached) {
+
+    var models = [];
+
+    var query = '{"name":"statistics_cache_study"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (should_cache === false) query += ',"value.should_cache":false';
+    else if (should_cache === true) query += ',"value.should_cache":true';
+    if (is_cached === false) query += ',"value.is_cached":false';
+    else if (is_cached === true) query += ',"value.is_cached":true';
+    query += '}';
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=50&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                //console.log(requestSettings);
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+// create metadata entry for statistics cache for a single repertoire
+tapisIO.createStatisticsCacheRepertoireMetadata = function(repository_id, study_id, repertoire_id, download_cache_id, should_cache) {
+
+    var postData = {
+        name: 'statistics_cache_repertoire',
+        value: {
+            repository_id: repository_id,
+            study_id: study_id,
+            repertoire_id: repertoire_id,
+            download_cache_id: download_cache_id,
+            should_cache: should_cache,
+            is_cached: false,
+            statistics_job_id: null
+        }
+    };
+
+    postData = JSON.stringify(postData);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v2/data',
+                rejectUnauthorized: false,
+                headers: {
+                    'Content-Type':   'application/json',
+                    'Content-Length': Buffer.byteLength(postData),
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject.result);
+        })
+        .catch(function(errorObject) {
+            return Promise.reject(errorObject);
+        });
+};
+
+// get list of repertoire cache entries
+tapisIO.getStatisticsCacheRepertoireMetadata = function(repository_id, study_id, repertoire_id, should_cache, is_cached, max_limit) {
+
+    var models = [];
+
+    var query = '{"name":"statistics_cache_repertoire"';
+    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
+    if (study_id) query += ',"value.study_id":"' + study_id + '"';
+    if (repertoire_id) query += ',"value.repertoire_id":"' + repertoire_id + '"';
+    if (should_cache === false) query += ',"value.should_cache":false';
+    else if (should_cache === true) query += ',"value.should_cache":true';
+    if (is_cached === false) query += ',"value.is_cached":false';
+    else if (is_cached === true) query += ',"value.is_cached":true';
+    query += '}';
+
+    var limit = 50;
+    if (max_limit) {
+        if (max_limit < limit) limit = max_limit;
+        if (max_limit < 1) return Promise.resolve([]);
+    }
+
+    var doFetch = function(offset) {
+        return ServiceAccount.getToken()
+            .then(function(token) {
+                var requestSettings = {
+                    host:     tapisSettings.hostname,
+                    method:   'GET',
+                    path:     '/meta/v2/data?q='
+                        + encodeURIComponent(query)
+                        + '&limit=' + limit + '&offset=' + offset,
+                    rejectUnauthorized: false,
+                    headers: {
+                        'Authorization': 'Bearer ' + ServiceAccount.accessToken()
+                    }
+                };
+
+                return tapisIO.sendRequest(requestSettings, null)
+            })
+            .then(function(responseObject) {
+                var result = responseObject.result;
+                if (result.length > 0) {
+                    // maybe more data
+                    models = models.concat(result);
+                    if ((max_limit) && (models.length >= max_limit))
+                        return Promise.resolve(models);
+                    var newOffset = offset + result.length;
+                    return doFetch(newOffset);
+                } else {
+                    // no more data
+                    return Promise.resolve(models);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    }
+
+    return doFetch(0);
+};
+
+// get statistics from the database
+tapisIO.getStatistics = function(collection, repertoire_id, data_processing_id) {
+
+    if (! repertoire_id) return Promise.reject(new Error("repertoire_id cannot be null"));
+    var filter = { "repertoire.repertoire_id":repertoire_id };
+    if (data_processing_id) filter['repertoire.data_processing_id'] = data_processing_id;
+
+    return tapisIO.performQuery(collection, JSON.stringify(filter));
+};
+
+// delete statistics in the database
+tapisIO.deleteStatistics = async function(collection, repertoire_id, data_processing_id) {
+
+    var stats_records = await tapisIO.getStatistics(collection, repertoire_id, data_processing_id)
+        .catch(function(error) {
+            return Promise.reject(error);
+        });
+
+    for (let i in stats_records) {
+        await tapisIO.deleteDocument(collection, stats_records[i]['_id']['$oid'])
+            .catch(function(error) {
+                return Promise.reject(error);
+            });
+    }
+
+    return Promise.resolve();
+};
+
+// record statistics in the database
+tapisIO.recordStatistics = function(collection, data) {
+
+    // first delete any entries then insert
+    return tapisIO.deleteStatistics(collection, data['repertoire']['repertoire_id'], data['repertoire']['data_processing_id'])
+        .then(function() {
+            return ServiceAccount.getToken();
+        })
+        .then(function(token) {
+
+            var postData = JSON.stringify(data);
+
+            var requestSettings = {
+                host:     tapisSettings.hostname,
+                method:   'POST',
+                path:     '/meta/v3/' + tapisSettings.mongo_dbname + '/' + collection,
+                rejectUnauthorized: false,
+                headers: {
+                    'Accept':   'application/json',
+                    'Authorization': 'Bearer ' + ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(postData)
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisIO.sendRequest(requestSettings, postData);
+        })
+        .then(function(responseObject) {
+            return Promise.resolve(responseObject);
+        })
+        .catch(function(errorObject) {
+            console.error(errorObject);
+            return Promise.reject(errorObject);
+        });
+};
+*/
 
 /* TESTING
 tapisV3.getRepertoireCacheEntries().then(function(data) {
