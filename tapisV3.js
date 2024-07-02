@@ -1509,6 +1509,21 @@ tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire
 //
 /////////////////////////////////////////////////////////////////////
 //
+// ADC Async functions
+//
+
+// get async query status
+tapisV3.getAsyncQueryStatus = function(status_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getMetadataForProject")) return tapisSettings.performInjectError();
+
+    var filter = { "uuid": status_uuid, "name": "async_query" };
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
 // Statistics cache functions
 //
 
