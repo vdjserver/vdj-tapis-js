@@ -35,16 +35,8 @@ module.exports = AuthController;
 var tapisIO = require('./tapisV3');
 var tapisSettings = tapisIO.tapisSettings;
 var ServiceAccount = tapisIO.serviceAccount;
+var config = tapisIO.config;
 var webhookIO = require('./webhookIO');
-
-// attach config object for reporting errors
-AuthController.set_config = function(config) {
-    if (config) {
-        console.log('vdj-tapis (AuthController) config object set for app: ' + config.name);
-    }
-    AuthController.config = config;
-    return AuthController;
-};
 
 // Extract token from header
 AuthController.extractToken = function(req) {
@@ -54,20 +46,20 @@ AuthController.extractToken = function(req) {
     // extract the token from the authorization header
     if (! req['headers']['authorization']) {
         let msg = 'missing authorization header';
-        msg = AuthController.config.log.error(context, msg);
+        msg = config.log.error(context, msg);
         webhookIO.postToSlack(msg);
         return false;
     }
     var fields = req['headers']['authorization'].split(' ');
     if (fields.length != 2) {
         let msg = 'invalid authorization header: ' + req['headers']['authorization'];
-        msg = AuthController.config.log.error(context, msg);
+        msg = config.log.error(context, msg);
         webhookIO.postToSlack(msg);
         return false;
     }
     if (fields[0].toLowerCase() != 'bearer') {
         let msg = 'invalid authorization header: ' + req['headers']['authorization'];
-        msg = AuthController.config.log.error(context, msg);
+        msg = config.log.error(context, msg);
         webhookIO.postToSlack(msg);
         return false;
     }
@@ -111,7 +103,7 @@ AuthController.userAuthorization = function(req, scopes, definition) {
                     }
                     else {
                         var msg = 'access by unverified user: ' + req['user']['username'];
-                        msg = AuthController.config.log.error(context, msg);
+                        msg = config.log.error(context, msg);
                         webhookIO.postToSlack(msg);
                         return false;
                     }
@@ -119,7 +111,7 @@ AuthController.userAuthorization = function(req, scopes, definition) {
         })
         .catch(function(error) {
             var msg = 'invalid token: ' + token + ', error: ' + error;
-            msg = AuthController.config.log.error(context, msg);
+            msg = config.log.error(context, msg);
             webhookIO.postToSlack(msg);
             return false;
         });
@@ -148,14 +140,14 @@ AuthController.adminAuthorization = function(req, scopes, definition) {
             else {
                 var msg = 'access by unauthorized user: ' + req['user']['username']
                     + ', route: ' + JSON.stringify(req.route.path);
-                msg = AuthController.config.log.error(context, msg);
+                msg = config.log.error(context, msg);
                 webhookIO.postToSlack(msg);
                 return false;
             }
         })
         .catch(function(error) {
             var msg = 'invalid token: ' + token + ', error: ' + error;
-            msg = AuthController.config.log.error(context, msg);
+            msg = config.log.error(context, msg);
             webhookIO.postToSlack(msg);
             return false;
         });
@@ -176,7 +168,7 @@ AuthController.projectAuthorization = function(req, scopes, definition) {
         if (req.params) project_uuid = req.params.project_uuid;
     if (project_uuid == undefined) {
         var msg = 'missing project uuid, route ' + JSON.stringify(req.route.path);
-        msg = AuthController.config.log.error(context, msg);
+        msg = config.log.error(context, msg);
         webhookIO.postToSlack(msg);
         return false;
     }
@@ -207,7 +199,7 @@ AuthController.projectAuthorization = function(req, scopes, definition) {
         .catch(function(error) {
             var msg = 'project: ' + project_uuid + ', route: '
                 + JSON.stringify(req.route.path) + ', error: ' + error;
-            msg = AuthController.config.log.error(context, msg);
+            msg = config.log.error(context, msg);
             webhookIO.postToSlack(msg);
             return false;
         });
@@ -235,7 +227,7 @@ AuthController.verifyUser = function(username) {
         })
         .catch(function(error) {
             var msg = 'error validating user: ' + username + ', error ' + error;
-            msg = AuthController.config.log.error(context, msg);
+            msg = config.log.error(context, msg);
             webhookIO.postToSlack(msg);
             return false;
         })

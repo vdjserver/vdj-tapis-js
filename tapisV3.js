@@ -62,6 +62,16 @@ tapisV3.init_with_schema = function(schema) {
     return tapisV3;
 };
 
+// attach config object for reporting errors
+tapisV3.set_config = function(config) {
+    if (config) {
+        console.log('vdj-tapis (tapisV3) config object set for app: ' + config.name);
+    }
+    tapisV3.config = config;
+    return tapisV3;
+};
+
+
 //
 // Generic send request
 //
@@ -698,7 +708,7 @@ tapisV3.performLargeAggregation = function(collection, aggregation, query, field
             var requestSettings = {
                 url: url,
                 method: 'POST',
-                data: JSON.stringify(postData),
+                data: postData,
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
