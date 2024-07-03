@@ -1397,6 +1397,38 @@ tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
 // AIRR Data Commons functions
 //
 
+// facets aggregation query
+tapisV3.performFacets = function(collection, query, field, start_page, pagesize) {
+    var context = 'tapisV3.performFacets';
+    var models = [];
+
+    //console.log(query);
+    var doAggr = function(page) {
+        var aggrFunction = tapisV3.performAggregation;
+        if (query && query.length > tapisSettings.large_query_size) {
+            tapisV3.config.log.info(context, 'Large facets query detected.');
+            aggrFunction = tapisV3.performLargeAggregation;
+        }
+        // TAPIS BUG: with pagesize and normal aggregation so use the large one for now
+        aggrFunction = tapisV3.performLargeAggregation;
+        return aggrFunction(collection, 'facets', query, field, null, null)
+            .then(function(records) {
+                tapisV3.config.log.info(context, 'query returned ' + records.length + ' records.');
+                if (records.length == 0) {
+                    return Promise.resolve(models);
+                } else {
+                    // the new facets aggregation returns a single record with all the data
+                    return Promise.resolve(records[0]['facets']);
+                }
+            })
+            .catch(function(errorObject) {
+                return Promise.reject(errorObject);
+            });
+    };
+    
+    return doAggr(start_page);
+}
+
 // the global/system list of ADC repositories
 // this should be a singleton metadata entry owned by service account
 tapisV3.getSystemADCRepositories = function() {

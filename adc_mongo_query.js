@@ -51,7 +51,7 @@ ADCMongoQuery.cleanRecord = function(record) {
 // filters parameter is a JSON object that can be any number of nested
 // levels, so we recursively construct the query.
 
-ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error) {
+ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, check_query_support, disable_contains) {
     var context = 'ADCMongoQuery.constructQueryOperation';
 
     if (!filter['op']) {
@@ -80,6 +80,27 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error) {
     // so use the same type as the value.
     if (!content_type) content_type = typeof content['value'];
     //config.log.info(context, 'type: ' + content_type);
+
+    // Check if query field is required. By default, the ADC API can reject
+    // queries on the rearrangement endpoint for optional fields.
+    if (check_query_support) {
+        var support = false;
+        if (content_properties != undefined) {
+            if (content_properties['x-airr'] != undefined) {
+                if ((content_properties['x-airr']['adc-query-support'] != undefined) &&
+                    (content_properties['x-airr']['adc-query-support'])) {
+                    // need to support query
+                    support = true;
+                }
+            }
+        }
+        if (!support) {
+            // optional field, reject
+            config.log.info(context, content['field'] + ' is an optional query field.');
+            error['message'] = "query not supported on field: " + content['field'];
+            return null;
+        }
+    }
 
     // verify the value type against the field type
     // stringify the value properly for the query
@@ -207,7 +228,24 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error) {
             error['message'] = "missing value for 'contains' operator";
             return null;
         }
-        return '{"' + content['field'] + '": { "$regex":' + escapeString(content_value) + ', "$options": "i"}}';
+
+        // VDJServer optimization for substring searches on junction_aa
+        if (content['field'] == 'junction_aa') {
+            if (content['value'].length < 4) {
+                error['message'] = "value for 'contains' operator on 'junction_aa' field is too small, length is ("
+                    + content['value'].length + ") characters, minimum is 4.";
+                return null;
+            } else {
+                return '{"vdjserver_junction_suffixes": {"$regex": "^' + content['value'] + '"}}';
+            }
+        }
+
+        if (disable_contains) {
+            error['message'] = "'contains' operator not supported for '" + content['field'] + "' field.";
+            return null;
+        } else {
+            return '{"' + content['field'] + '": { "$regex":' + escapeString(content_value) + ', "$options": "i"}}';
+        }
 
     case 'is': // is missing
     case 'is missing':
