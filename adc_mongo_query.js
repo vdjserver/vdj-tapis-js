@@ -70,37 +70,41 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
 
     // determine type from schema, default is string
     var content_type = null;
-    var content_properties = airr.specForQueryField(schema, content['field']);
-    if (content_properties) content_type = content_properties['type'];
-    if (!content_properties) {
-        config.log.info(context, content['field'] + ' is not found in AIRR schema.');
-    } else content_type = content_properties['type'];
+    var content_properties = null;
+    if (content['field'] != undefined) {
+        content_properties = airr.specForQueryField(schema, content['field']);
+        if (content_properties) content_type = content_properties['type'];
+        if (!content_properties) {
+            config.log.info(context, content['field'] + ' is not found in AIRR schema.');
+        } else content_type = content_properties['type'];
+
+        // Check if query field is required. By default, the ADC API can reject
+        // queries on the rearrangement endpoint for optional fields.
+        if (check_query_support) {
+            var support = false;
+            if (content_properties != undefined) {
+                if (content_properties['x-airr'] != undefined) {
+                    if ((content_properties['x-airr']['adc-query-support'] != undefined) &&
+                        (content_properties['x-airr']['adc-query-support'])) {
+                        // need to support query
+                        support = true;
+                    }
+                }
+            }
+            if (!support) {
+                // optional field, reject
+                config.log.info(context, content['field'] + ' is an optional query field.');
+                error['message'] = "query not supported on field: " + content['field'];
+                return null;
+            }
+        }
+    }
+    //config.log.info(context, 'props: ' + content_properties);
 
     // if not in schema then maybe its a custom field
     // so use the same type as the value.
     if (!content_type) content_type = typeof content['value'];
     //config.log.info(context, 'type: ' + content_type);
-
-    // Check if query field is required. By default, the ADC API can reject
-    // queries on the rearrangement endpoint for optional fields.
-    if (check_query_support) {
-        var support = false;
-        if (content_properties != undefined) {
-            if (content_properties['x-airr'] != undefined) {
-                if ((content_properties['x-airr']['adc-query-support'] != undefined) &&
-                    (content_properties['x-airr']['adc-query-support'])) {
-                    // need to support query
-                    support = true;
-                }
-            }
-        }
-        if (!support) {
-            // optional field, reject
-            config.log.info(context, content['field'] + ' is an optional query field.');
-            error['message'] = "query not supported on field: " + content['field'];
-            return null;
-        }
-    }
 
     // verify the value type against the field type
     // stringify the value properly for the query
@@ -146,6 +150,7 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
             }
         }
     }
+    //config.log.info(context, 'value: ' + content_value);
 
     // query operators
     switch(filter['op']) {
@@ -305,7 +310,7 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
 
         var exp_list = [];
         for (var i = 0; i < content.length; ++i) {
-            var exp = ADCMongoQuery.constructQueryOperation(content[i], error);
+            var exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
             if (exp == null) return null;
             exp_list.push(exp);
         }
@@ -324,7 +329,7 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
 
         var exp_list = [];
         for (var i = 0; i < content.length; ++i) {
-            var exp = ADCMongoQuery.constructQueryOperation(content[i], error);
+            var exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
             if (exp == null) return null;
             exp_list.push(exp);
         }
