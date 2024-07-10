@@ -28,6 +28,9 @@
     "json-approver": "1.0.3",
     "moment": ">=2.29.4",
     "moment-timezone": ">=0.5.35",
+    "mongodb": "^3.4.1",
+    "nodemailer": "",
+    "nodemailer-sendmail-transport": "",
     "request": "2.88.2",
     "underscore": ">=1.12.1",
     "uuid": "^9.0.1"

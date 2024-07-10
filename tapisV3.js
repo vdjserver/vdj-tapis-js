@@ -62,16 +62,6 @@ tapisV3.init_with_schema = function(schema) {
     return tapisV3;
 };
 
-// attach config object for reporting errors
-tapisV3.set_config = function(config) {
-    if (config) {
-        console.log('vdj-tapis (tapisV3) config object set for app: ' + config.name);
-    }
-    tapisV3.config = config;
-    return tapisV3;
-};
-
-
 //
 // Generic send request
 //
@@ -672,7 +662,7 @@ tapisV3.performAggregation = function(collection, aggregation, query, field, pag
                 }
             };
 
-            //console.log(requestSettings);
+            console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings, false, true);
         });
@@ -716,7 +706,7 @@ tapisV3.performLargeAggregation = function(collection, aggregation, query, field
                 }
             };
 
-            //console.log(requestSettings);
+            console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings, false, true);
         });
@@ -1406,14 +1396,14 @@ tapisV3.performFacets = function(collection, query, field, start_page, pagesize)
     var doAggr = function(page) {
         var aggrFunction = tapisV3.performAggregation;
         if (query && query.length > tapisSettings.large_query_size) {
-            tapisV3.config.log.info(context, 'Large facets query detected.');
+            tapisSettings.config.log.info(context, 'Large facets query detected.');
             aggrFunction = tapisV3.performLargeAggregation;
         }
         // TAPIS BUG: with pagesize and normal aggregation so use the large one for now
-        aggrFunction = tapisV3.performLargeAggregation;
+        //aggrFunction = tapisV3.performLargeAggregation;
         return aggrFunction(collection, 'facets', query, field, null, null)
             .then(function(records) {
-                tapisV3.config.log.info(context, 'query returned ' + records.length + ' records.');
+                tapisSettings.config.log.info(context, 'query returned ' + records.length + ' records.');
                 if (records.length == 0) {
                     return Promise.resolve(models);
                 } else {

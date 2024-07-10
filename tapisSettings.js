@@ -33,6 +33,9 @@ function parseBoolean(value)
 }
 
 var tapisSettings = {
+    tapis_version: process.env.TAPIS_VERSION,
+    config: null,
+
     // Tapis V3 Auth Settings
     clientKeyV3:    process.env.TAPIS_V3_CLIENT_KEY,
     clientSecretV3: process.env.TAPIS_V3_CLIENT_SECRET,
@@ -81,6 +84,29 @@ var tapisSettings = {
     large_lrq_query_size: 50 * 1024
 };
 module.exports = tapisSettings;
+
+tapisSettings.get_default_tapis = function(config) {
+    var context = 'tapis';
+
+    if (config) {
+        config.log.info(context, 'config object set for app: ' + config.name);
+        tapisSettings.config = config;
+    }
+
+    if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
+    else if (tapisSettings.tapis_version == 3) tapisSettings.config.log.info(context, 'Using Tapis V3 API', true);
+    else {
+        tapisSettings.config.log.error(context, 'Invalid Tapis version, check TAPIS_VERSION environment variable');
+        return null;
+    }
+
+    var tapisV2 = require('vdj-tapis-js/tapis');
+    var tapisV3 = require('vdj-tapis-js/tapisV3');
+    var tapisIO = null;
+    if (tapisSettings.tapis_version == 2) tapisIO = tapisV2;
+    if (tapisSettings.tapis_version == 3) tapisIO = tapisV3;
+    return tapisIO;
+}
 
 // TODO: not implemented
 // Error injection enabled
