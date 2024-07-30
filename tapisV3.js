@@ -38,6 +38,7 @@ const { v4: uuidv4 } = require('uuid');
 // Settings
 var tapisSettings = require('./tapisSettings');
 tapisV3.tapisSettings = tapisSettings;
+var config = tapisSettings.config;
 
 // Models
 var ServiceAccount = require('./serviceAccountV3');
@@ -765,6 +766,28 @@ tapisV3.getProjectMetadata = function(username, project_uuid) {
     return tapisV3.performMultiUserQuery(username, 'tapis_meta', query);
 };
 
+// get public projects for a user
+// or single public project given uuid
+tapisV3.getPublicProjectMetadata = function(username, project_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
+
+    var filter = { "name": "public_project" };
+    if (project_uuid) filter['uuid'] = project_uuid;
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiUserQuery(username, 'tapis_meta', query);
+};
+
+// get any/all public projects
+// or single public project given uuid
+tapisV3.getAnyPublicProjectMetadata = function(project_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
+
+    var filter = { "name": { "$in": ["private_project", "public_project"] } };
+    if (project_uuid) filter['uuid'] = project_uuid;
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
 // query metadata associated with project
 // security: it is assumed user has project access
 tapisV3.queryMetadataForProject = function(project_uuid, meta_name, additional_filters) {
@@ -1085,6 +1108,115 @@ tapisV3.deleteAllProjectMetadataForName = async function(project_uuid, meta_name
     return Promise.resolve(metadataList.length);
 };
 
+tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, keep_uuids) {
+    var context = 'tapisV3.gatherRepertoireMetadataForProject';
+
+    var msg = null;
+    var repertoireMetadata = [];
+    var subjectMetadata = {};
+    var sampleMetadata = {};
+    var dpMetadata = {};
+    var projectUuid = projectMetadata['uuid'];
+
+    if (!tapisV3.schema) {
+        return Promise.reject(new Error('schema is not defined for tapis.'));
+    }
+
+    // get repertoire objects
+    var models = await tapisV3.queryMetadataForProject(projectUuid, 'repertoire')
+        .catch(function(error) { Promise.reject(error); });
+
+    config.log.info(context, 'gathered ' + models.length + ' repertoires.');
+
+    // put into AIRR format
+    var study = projectMetadata.value;
+    var schema = tapisV3.schema.get_schema('AIRRRepertoire');
+    var blank = schema.template();
+    //console.log(JSON.stringify(study, null, 2));
+    //console.log(JSON.stringify(blank, null, 2));
+
+    if (!keep_uuids) delete study['vdjserver'];
+
+    for (var i in models) {
+        var model = models[i].value;
+        model['repertoire_id'] = models[i].uuid;
+        model['study'] = study;
+        repertoireMetadata.push(model);
+    }
+
+    // get subject objects
+    models = await tapisV3.queryMetadataForProject(projectUuid, 'subject')
+        .catch(function(error) { Promise.reject(error); });
+
+    config.log.info(context, 'gathered ' + models.length + ' subjects.');
+    for (var i in models) {
+        subjectMetadata[models[i].uuid] = models[i].value;
+    }
+
+    // get sample processing objects
+    models = await tapisV3.queryMetadataForProject(projectUuid, 'sample_processing')
+        .catch(function(error) { Promise.reject(error); });
+
+    config.log.info(context, 'gathered ' + models.length + ' sample processings.');
+    for (var i in models) {
+        sampleMetadata[models[i].uuid] = models[i].value;
+    }
+
+    // get data processing objects
+    models = await tapisV3.queryMetadataForProject(projectUuid, 'data_processing')
+        .catch(function(error) { Promise.reject(error); });
+
+    config.log.info(context, 'gathered ' + models.length + ' data processings.');
+     for (var i in models) {
+        dpMetadata[models[i].uuid] = models[i].value;
+    }
+
+    var dpschema = tapisV3.schema.get_schema('DataProcessing');
+
+    // put into AIRR format
+    for (var i in repertoireMetadata) {
+        var rep = repertoireMetadata[i];
+        var subject = subjectMetadata[rep['subject']['vdjserver_uuid']];
+        if (! subject) {
+            config.log.info(context, 'cannot collect subject: '
+                          + rep['subject']['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
+        }
+        if (!keep_uuids) delete subject['value']['vdjserver'];
+        rep['subject'] = subject;
+
+        var samples = [];
+        for (var j in rep['sample']) {
+            var sample = sampleMetadata[rep['sample'][j]['vdjserver_uuid']];
+            if (! sample) {
+                config.log.info(context, 'cannot collect sample: '
+                              + rep['sample'][j]['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
+            }
+            if (!keep_uuids) delete sample['value']['vdjserver'];
+            samples.push(sample);
+        }
+        rep['sample'] = samples;
+
+        var dps = [];
+        for (var j in rep['data_processing']) {
+            // can be null if no analysis has been done
+            if (rep['data_processing'][j]['vdjserver_uuid']) {
+                var dp = dpMetadata[rep['data_processing'][j]['vdjserver_uuid']];
+                if (! dp) {
+                    config.log.info(context, 'cannot collect data_processing: '
+                                  + rep['data_processing'][j]['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
+                }
+                if (!keep_uuids) delete dp['value']['vdjserver'];
+                dps.push(dp);
+            }
+        }
+        if (dps.length == 0) {
+            rep['data_processing'] = [ dpschema.template() ];
+        } else rep['data_processing'] = dps;
+    }
+
+    return Promise.resolve(repertoireMetadata);
+};
+
 //
 /////////////////////////////////////////////////////////////////////
 //
@@ -1379,6 +1511,114 @@ tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
             //console.log(JSON.stringify(data));
             return Promise.resolve(data[0]);
         });
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
+// Project load/unload from VDJServer ADC data repository
+//
+
+//
+// Right now, all the project load/unload metadata is owned by the
+// vdj account, no permissions for project users are given.
+//
+
+tapisV3.createProjectLoadMetadata = function(projectUuid, collection) {
+
+    var meta_name = 'adc_project_load';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        obj['value']['projectUuid'] = projectUuid;
+        obj['value']['collection'] = collection;
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
+
+// there should be only a single metadata record
+tapisV3.getProjectLoadMetadata = function(projectUuid, collection) {
+
+    var filter = {
+        "name": "adc_project_load",
+        "owner": ServiceAccount.username,
+        "value.projectUuid": projectUuid,
+        "value.collection": collection
+    };
+    var query = JSON.stringify(filter);
+    return tapisV3.performServiceQuery('tapis_meta', query);
+};
+
+// query project load records
+tapisV3.queryProjectLoadMetadata = function(projectUuid, collection, shouldLoad, isLoaded, repertoireMetadataLoaded, rearrangementDataLoaded) {
+
+    var filter = {
+        "name": "adc_project_load",
+        "owner": ServiceAccount.username
+    };
+    if (projectUuid) filter['value.projectUuid'] = projectUuid;
+    if (collection) filter['value.collection'] = collection;
+    if (shouldLoad === false) filter["value.shouldLoad"] = false;
+    else if (shouldLoad === true) filter["value.shouldLoad"] = true;
+    if (isLoaded === false) filter["value.isLoaded"] = false;
+    else if (isLoaded === true) filter["value.isLoaded"] = true;
+    if (repertoireMetadataLoaded === false) filter["value.repertoireMetadataLoaded"] = false;
+    else if (repertoireMetadataLoaded === true) filter["value.repertoireMetadataLoaded"] = true;
+    if (rearrangementDataLoaded === false) filter["value.rearrangementDataLoaded"] = false;
+    else if (rearrangementDataLoaded === true) filter["value.rearrangementDataLoaded"] = true;
+    
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
+// get list of projects to be loaded
+tapisV3.getProjectsToBeLoaded = function(collection) {
+
+    var filter = {
+        "name": "adc_project_load",
+        "owner": ServiceAccount.username,
+        "value.collection": collection,
+        "value.shouldLoad": true,
+        "value.isLoaded": false
+    };
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
+// status record for a rearrangement load
+tapisV3.createRearrangementLoadMetadata = function(projectUuid, repertoire_id, collection) {
+
+    var meta_name = 'adc_rearrangement_load';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        obj['value']['projectUuid'] = projectUuid;
+        obj['value']['repertoire_id'] = repertoire_id;
+        obj['value']['collection'] = collection;
+        obj['value']['load_set'] = 0;
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
+
+// get list of repertoires that need their rearrangement data to be loaded
+tapisV3.getRearrangementsToBeLoaded = function(projectUuid, collection) {
+
+    var filter = {
+        "name": "adc_rearrangement_load",
+        "owner": ServiceAccount.username,
+        "value.projectUuid": projectUuid,
+        "value.collection": collection
+    };
+    var query = JSON.stringify(filter);
+    return tapisV3.performMultiServiceQuery('tapis_meta', query);
 };
 
 //
