@@ -301,7 +301,7 @@ mongoIO.processRearrangementRow = function(row, rep, dp_id, load_set) {
 }
 
 mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, load_set_start, loadCollection) {
-
+    var context = 'mongoIO.processFile';
     var records = [];
     var rows = [];
     var total_cnt = 0;
@@ -316,8 +316,17 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
     return new Promise(function(resolve, reject) {
 
     var readable = fs.createReadStream(filename)
+        .on('error', async function(e) {
+            reject(e);
+        })
         .pipe(zlib.createGunzip())
+        .on('error', async function(e) {
+            reject(e);
+        })
         .pipe(csv({separator:'\t', mapValues: mapValues}))
+        .on('error', async function(e) {
+            reject(e);
+        })
         .on('data', async function(row) {
             rows.push(row);
             if (rows.length == 10000) {
@@ -325,7 +334,7 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
                 readable.pause();
 
                 if (load_set >= load_set_start) {
-                    console.log('VDJ-API INFO: mongoIO.loadRearrangementData, inserting load set: ' + load_set);
+                    config.log.info(context, 'inserting load set: ' + load_set);
                     // process and cleanup records
                     for (var r = 0; r < rows.length; ++r) {
                         //if (r == 0) console.log(rows[r]);
@@ -340,24 +349,26 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
                     // update rearrangement data load record
                     var retry = false;
                     dataLoad['value']['load_set'] = load_set + 1;
-                    await tapisIO.updateMetadata(dataLoad.uuid, dataLoad.name, dataLoad.value, dataLoad.associationIds)
+                    await tapisIO.updateDocument(dataLoad.uuid, dataLoad.name, dataLoad.value)
                         .catch(function(error) {
-                            var msg = 'VDJ-API ERROR: mongoIO.processFile, updateMetadata error occurred, error: ' + error;
-                            console.error(msg);
+                            var msg = 'tapisIO.updateDocument error: ' + error;
+                            msg = config.log.error(context, msg);
+                            webhookIO.postToSlack(msg);
                             retry = true;
                         });
                     if (retry) {
-                        console.log('VDJ-API INFO: mongoIO.processFile, retrying updateMetadata');
-                        await tapisIO.updateMetadata(dataLoad.uuid, dataLoad.name, dataLoad.value, dataLoad.associationIds)
+                        config.log.info(context, 'retrying updateDocument');
+                        await tapisIO.updateDocument(dataLoad.uuid, dataLoad.name, dataLoad.value)
                             .catch(function(error) {
-                                var msg = 'VDJ-API ERROR: mongoIO.processFile, updateMetadata error occurred, error: ' + error;
-                                console.error(msg);
+                                var msg = 'tapisIO.updateDocument error: ' + error;
+                                msg = config.log.error(context, msg);
+                                webhookIO.postToSlack(msg);
                                 readable.destroy();
                                 return reject(msg);
                             });
                     }
                 } else {
-                    console.log('VDJ-API INFO: mongoIO.loadRearrangementData, skipping load set: ' + load_set);
+                    config.log.info(context, 'skipping load set: ' + load_set);
                 }
                 total_cnt += records.length;
                 ++load_set;
@@ -370,7 +381,7 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
         .on('end', async function() {
             if (rows.length > 0) {
                 if (load_set >= load_set_start) {
-                    console.log('VDJ-API INFO: mongoIO.loadRearrangementData, end file, inserting load set: ' + load_set);
+                    config.log.info(context, 'end file, inserting load set: ' + load_set);
                     // process and cleanup records
                     for (var r = 0; r < rows.length; ++r) {
                         //if (r == 0) console.log(rows[r]);
@@ -385,31 +396,33 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
                     // update rearrangement data load record
                     var retry = false;
                     dataLoad['value']['load_set'] = load_set + 1;
-                    await tapisIO.updateMetadata(dataLoad.uuid, dataLoad.name, dataLoad.value, dataLoad.associationIds)
+                    await tapisIO.updateDocument(dataLoad.uuid, dataLoad.name, dataLoad.value)
                         .catch(function(error) {
-                            var msg = 'VDJ-API ERROR: mongoIO.processFile, updateMetadata error occurred, error: ' + error;
-                            console.error(msg);
+                            var msg = 'tapisIO.updateDocument error: ' + error;
+                            msg = config.log.error(context, msg);
+                            webhookIO.postToSlack(msg);
                             retry = true;
                         });
                     if (retry) {
-                        console.log('VDJ-API INFO: mongoIO.processFile, retrying updateMetadata');
-                        await tapisIO.updateMetadata(dataLoad.uuid, dataLoad.name, dataLoad.value, dataLoad.associationIds)
+                        config.log.info(context, 'retrying updateDocument');
+                        await tapisIO.updateDocument(dataLoad.uuid, dataLoad.name, dataLoad.value)
                             .catch(function(error) {
-                                var msg = 'VDJ-API ERROR: mongoIO.processFile, updateMetadata error occurred, error: ' + error;
-                                console.error(msg);
+                                var msg = 'tapisIO.updateDocument error: ' + error;
+                                msg = config.log.error(context, msg);
+                                webhookIO.postToSlack(msg);
                                 return reject(msg);
                             });
                     }
 
                 } else {
-                    console.log('VDJ-API INFO: mongoIO.loadRearrangementData, end file, skipping load set: ' + load_set);
+                    config.log.info(context, 'end file, skipping load set: ' + load_set);
                 }
                 total_cnt += records.length;
                 ++load_set;
                 records = [];
                 rows = [];
             }
-            console.log('VDJ-API INFO: mongoIO.loadRearrangementData, file successfully processed: ' + filename + ', rearrangement count: ' + total_cnt);
+            config.log.info(context, 'file successfully processed: ' + filename + ', rearrangement count: ' + total_cnt);
             return resolve(load_set);
         });
     });
@@ -418,15 +431,17 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
 // Delete all rearrangements for a repertoire_id or for
 // just a given load_set.
 mongoIO.deleteLoadSet = async function(repertoire_id, load_set, loadCollection) {
+    var context = 'mongoIO.deleteLoadSet';
 
-    console.log('VDJ-API INFO: mongoIO.deleteLoadSet, repertoire: ' + repertoire_id + ' load set: ' + load_set);
+    config.log.info(context, 'repertoire: ' + repertoire_id + ' load set: ' + load_set);
 
     return new Promise(function(resolve, reject) {
         // get connection to database
         MongoClient.connect(mongoSettings.url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
-                console.error(msg);
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
                 var v1airr = db.db(mongoSettings.dbname);
@@ -438,10 +453,10 @@ mongoIO.deleteLoadSet = async function(repertoire_id, load_set, loadCollection) 
                     if (load_set >= 0)
                         filter['vdjserver_load_set'] = {"$gte": load_set};
 
-                console.log(filter);
+                //console.log(filter);
 
                 var result = await collection.deleteMany(filter);
-                console.log('VDJ-API INFO: mongoIO.deleteLoadSet, deleted rearrangements: ' + result);
+                config.log.info(context, 'deleted rearrangements: ' + result);
                 db.close();
                 resolve(result);
             }
@@ -451,6 +466,7 @@ mongoIO.deleteLoadSet = async function(repertoire_id, load_set, loadCollection) 
 
 // Insert rearrangement records
 mongoIO.insertRearrangement = async function(records, loadCollection) {
+    var context = 'mongoIO.insertRearrangement';
 
     return new Promise(function(resolve, reject) {
         // get connection to database
@@ -458,7 +474,8 @@ mongoIO.insertRearrangement = async function(records, loadCollection) {
         client.connect(async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
-                console.error(msg);
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
                 var v1airr = db.db(mongoSettings.dbname);
@@ -467,7 +484,7 @@ mongoIO.insertRearrangement = async function(records, loadCollection) {
 
                 var result = await collection.insertMany(records);
 
-                console.log('Inserted rearrangements: ' + JSON.stringify(result['result']));
+                config.log.info(context, 'Inserted rearrangements: ' + JSON.stringify(result['result']));
                 db.close();
                 resolve(result);
             }
@@ -477,13 +494,15 @@ mongoIO.insertRearrangement = async function(records, loadCollection) {
 
 // Delete repertoire for given repertoire_id
 mongoIO.deleteRepertoire = async function(repertoire_id, loadCollection) {
+    var context = 'mongoIO.deleteRepertoire';
 
     return new Promise(function(resolve, reject) {
         // get connection to database
         MongoClient.connect(mongoSettings.url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
-                console.error(msg);
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
                 var v1airr = db.db(mongoSettings.dbname);
@@ -491,10 +510,10 @@ mongoIO.deleteRepertoire = async function(repertoire_id, loadCollection) {
 
                 // delete than insert repertoire
                 var filter = {"repertoire_id":repertoire_id}
-                console.log(filter);
+                //console.log(filter);
 
                 var result = await collection.deleteMany(filter);
-                console.log('Deleted repertoire: ' + JSON.stringify(result));
+                config.log.info(context, 'Deleted repertoire: ' + JSON.stringify(result));
                 db.close();
                 resolve(result);
             }
@@ -504,13 +523,15 @@ mongoIO.deleteRepertoire = async function(repertoire_id, loadCollection) {
 
 // Insert repertoire
 mongoIO.insertRepertoire = async function(repertoire, loadCollection) {
+    var context = 'mongoIO.insertRepertoire';
 
     return new Promise(function(resolve, reject) {
         // get connection to database
         MongoClient.connect(mongoSettings.url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
-                console.error(msg);
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
                 var v1airr = db.db(mongoSettings.dbname);
@@ -520,7 +541,7 @@ mongoIO.insertRepertoire = async function(repertoire, loadCollection) {
 
                 // do insert
                 var result = await collection.insertOne(repertoire);
-                console.log('Inserted repertoire: ' + JSON.stringify(result['result']));
+                config.log.info(context, 'Inserted repertoire: ' + JSON.stringify(result['result']));
                 db.close();
                 resolve(result);
             }
@@ -544,6 +565,7 @@ mongoIO.loadRepertoireMetadata = async function(repertoireMetadata, collection) 
 // Load rearrangement data for a repertoire
 //
 mongoIO.loadRearrangementData = async function(dataLoad, repertoire, primaryDP, jobOutput) {
+    var context = 'mongoIO.loadRearrangementData';
     var filePath = '/vdjZ' + jobOutput['archivePath'];
     var files = primaryDP['data_processing_files'];
     var dp_id = primaryDP['data_processing_id'];
@@ -558,7 +580,7 @@ mongoIO.loadRearrangementData = async function(dataLoad, repertoire, primaryDP, 
     // loop through files and load
     for (var i = 0; i < files.length; ++i) {
         var filename = filePath + '/' + files[i];
-        console.log('VDJ-API INFO: mongoIO.loadRearrangementData, processing file: ' + filename + ' load set start: ' + load_set_start);
+        config.log.info(context, 'processing file: ' + filename + ' load set start: ' + load_set_start);
 
         var result = await mongoIO.processFile(filename, repertoire, dp_id, dataLoad, load_set, load_set_start, loadCollection)
             .catch(function(error) {
@@ -571,9 +593,11 @@ mongoIO.loadRearrangementData = async function(dataLoad, repertoire, primaryDP, 
 
     // update rearrangement data load record
     dataLoad['value']['isLoaded'] = true;
-    await tapisIO.updateMetadata(dataLoad.uuid, dataLoad.name, dataLoad.value, dataLoad.associationIds)
+    await tapisIO.updateDocument(dataLoad.uuid, dataLoad.name, dataLoad.value)
         .catch(function(error) {
-            var msg = 'VDJ-API ERROR: mongoIO.loadRearrangementData, updateMetadata error occurred, error: ' + error;
+            var msg = 'tapisIO.updateDocument error: ' + error;
+            msg = config.log.error(context, msg);
+            webhookIO.postToSlack(msg);
             return Promise.reject(msg);
         });
 }
