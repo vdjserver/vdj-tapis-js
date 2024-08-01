@@ -370,7 +370,6 @@ tapisV3.createMultipleDocuments = function(docs, skip_validate) {
         let obj = docs[i];
         if (! obj['name']) return Promise.reject(new Error('object at index: ' + i + ' is missing name.'));
         let uuid = uuidv4();
-        uuids.push(uuid);
         let new_obj = {
             uuid: uuid,
             associationIds: [],
@@ -389,6 +388,7 @@ tapisV3.createMultipleDocuments = function(docs, skip_validate) {
             }
         }
         objs.push(new_obj);
+        uuids.push(new_obj['uuid']);
     }
 
     // validate
@@ -1838,6 +1838,30 @@ tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire
     // TODO: implement limit
 
     return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
+tapisV3.createADCDownloadCachePostit = function(cache_uuid, obj) {
+
+    var postData = {
+    };
+    if (obj['allowedUses']) postData['allowedUses'] = obj['allowedUses'];
+    if (obj['validSeconds']) postData['validSeconds'] = obj['validSeconds'];
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/postits/' + tapisSettings.storageSystem + '//community/cache/' + cache_uuid + '/' + obj['path'],
+                method: 'POST',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
 };
 
 //
