@@ -155,12 +155,16 @@ tapisV3.recordQuery = function(query) {
 };
 
 // raw record creation
+// can be used to create one or multiple records
 tapisV3.createRecord = function(collection, data) {
     //if (tapisSettings.shouldInjectError("tapisIO.createMetadataForType")) return tapisSettings.performInjectError();
 
     // TODO: error if no collection
     // TODO: error if no data
-    var postData = JSON.stringify([ data ]);
+    if (Array.isArray(data))
+        var postData = JSON.stringify(data);
+    else
+        var postData = JSON.stringify([ data ]);
 
     return ServiceAccount.getToken()
         .then(function(token) {
@@ -348,6 +352,64 @@ tapisV3.deleteRecord = function(collection, doc_id) {
             console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings);
+        });
+};
+
+// document creation that follows tapis_meta schema
+// use the project specific functions for project metadata
+tapisV3.createMultipleDocuments = function(docs, skip_validate) {
+    //if (tapisSettings.shouldInjectError("tapisV3.createMultipleDocuments")) return tapisSettings.performInjectError();
+
+    if (!docs) return Promise.reject(new Error('no documents provided.'));
+    if (docs.length == 0) return Promise.reject(new Error('no documents provided.'));
+
+    var objs = [];
+    var uuids = [];
+    var date = new Date().toISOString();
+    for (let i in docs) {
+        let obj = docs[i];
+        if (! obj['name']) return Promise.reject(new Error('object at index: ' + i + ' is missing name.'));
+        let uuid = uuidv4();
+        uuids.push(uuid);
+        let new_obj = {
+            uuid: uuid,
+            associationIds: [],
+            owner: ServiceAccount.username,
+            created: date,
+            lastUpdated: date,
+            name: obj['name'],
+            value: {}
+        };
+        if (obj['value']) new_obj['value'] = obj['value'];
+        if (obj['associationIds']) new_obj['associationIds'] = obj['associationIds'];
+        if (obj['owner']) new_obj['owner'] = obj['owner'];
+        if (obj['extras']) {
+            for (let j in obj['extras']) {
+                new_obj[j] = obj['extras'][j];
+            }
+        }
+        objs.push(new_obj);
+    }
+
+    // validate
+    if (!skip_validate) {
+        if (tapisV3.schema) {
+            for (let i in objs) {
+                let s = tapisV3.schema.spec_for_tapis_name(objs[i]['name']);
+                if (!s) return Promise.reject('Cannot find spec with tapis name: ' + objs[i]['name']);
+                let error = s.validate_object(objs[i], ['x-vdjserver']);
+                if (error) return Promise.reject('Invalid object at index: ' + i + ' with tapis name: ' + objs[i]['name'] + ', error: ' + JSON.stringify(error));
+            }
+        } else return Promise.reject('Schema is not set for Tapis V3.');
+    }
+
+    var collection = 'tapis_meta';
+
+    return tapisV3.createRecord(collection, objs)
+        .then(function(data) {
+            // TODO: do we check that right number of records were inserted?
+            // we return the list of uuids
+            return Promise.resolve(uuids);
         });
 };
 
