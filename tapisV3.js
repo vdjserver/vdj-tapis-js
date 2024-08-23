@@ -1985,7 +1985,13 @@ tapisV3.createAsyncQueryPostit = function(obj) {
                 }
             };
 
-            return tapisV3.sendRequest(requestSettings);
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
         });
 };
 
