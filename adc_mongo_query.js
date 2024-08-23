@@ -308,9 +308,9 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
             return null;
         }
 
-        var exp_list = [];
-        for (var i = 0; i < content.length; ++i) {
-            var exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
+        let exp_list = [];
+        for (let i = 0; i < content.length; ++i) {
+            let exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
             if (exp == null) return null;
             exp_list.push(exp);
         }
@@ -327,9 +327,9 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
             return null;
         }
 
-        var exp_list = [];
-        for (var i = 0; i < content.length; ++i) {
-            var exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
+        let exp_list = [];
+        for (let i = 0; i < content.length; ++i) {
+            let exp = ADCMongoQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
             if (exp == null) return null;
             exp_list.push(exp);
         }
@@ -343,4 +343,50 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
 
     // should not get here
     //return null;
+}
+
+// Construct an aggregation to count the number of documents
+// that would be returned by query
+//
+ADCMongoQuery.generateAsyncCountQuery = function(metadata) {
+    var context = 'ADCMongoQuery.generateAsyncCountQuery';
+    var bodyData = metadata['value']['body'];
+
+    // from parameter
+    var from = 0;
+    if (bodyData['from'] != undefined) {
+        from = bodyData['from'];
+        from = Math.floor(from);
+    }
+
+    // construct query
+    var result_message = null;
+    var filter = {};
+    var query = undefined;
+    if (bodyData['filters'] != undefined) {
+        filter = bodyData['filters'];
+        try {
+            var error = { message: '' };
+            query = ADCMongoQuery.constructQueryOperation(filter, error);
+            //console.log(query);
+
+            if (!query) {
+                result_message = config.log.error(context, "Could not construct valid query. Error: " + error['message']);
+                return null;
+            }
+        } catch (e) {
+            result_message = config.log.error(context, "Could not construct valid query: " + e);
+            return null;
+        }
+    }
+    if (!query) query = '{}';
+    var parsed_query = JSON.parse(query);
+
+    var count_query = null;
+    count_query = [{"$match":parsed_query}];
+    if (from) count_query.push({"$skip":from});
+    count_query.push({"$count":"total_records"});
+
+    //console.log(JSON.stringify(count_query));
+    return count_query;
 }
