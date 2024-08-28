@@ -72,7 +72,7 @@ var tapisSettings = {
 
     // Mongodb, meta/v3 settings
     mongo_hostname: process.env.MONGODB_HOST,
-    mongo_dbname: process.env.MONGODB_DB,
+    mongo_dbname: process.env.TAPIS_MONGODB_DB,
     mongo_username: process.env.MONGODB_USER,
     mongo_userSecret: process.env.MONGODB_SECRET,
     mongo_queryCollection: process.env.MONGODB_QUERY_COLLECTION,
@@ -94,7 +94,7 @@ tapisSettings.get_default_tapis = function(config) {
     }
 
     if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
-    else if (tapisSettings.tapis_version == 3) tapisSettings.config.log.info(context, 'Using Tapis V3 API', true);
+    else if (tapisSettings.tapis_version == 3) tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
     else {
         tapisSettings.config.log.error(context, 'Invalid Tapis version, check TAPIS_VERSION environment variable');
         return null;

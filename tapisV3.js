@@ -191,6 +191,54 @@ tapisV3.getOAuthToken = async function(client, code) {
 //
 /////////////////////////////////////////////////////////////////////
 //
+// Notifications
+//
+
+// send a notification
+tapisV3.sendNotification = function(notification, data) {
+
+    var path = notification['url'];
+    var postData = null;
+    var method = 'GET';
+    if (data) {
+        // put data in request params
+        if (notification["method"] == 'GET') {
+            method = 'GET';
+
+            // check if URL already has some request params
+            var mark;
+            if (path.indexOf('?') >= 0) mark = '&';
+            else mark = '?';
+
+            var keys = Object.keys(data);
+            for (var p = 0; p < keys.length; ++p) {
+                path += mark;
+                path += keys[p] + '=' + encodeURIComponent(data[keys[p]]);
+                mark = '&';
+            }
+        } else {
+            method = 'POST';
+            postData = JSON.stringify(data);
+        }
+    }
+
+    var requestSettings = {
+        url: path,
+        method: method,
+        headers: {
+            'Content-Type':   'application/json'
+        }
+    };
+    if (postData) requestSettings['data'] = postData;
+
+    //console.log(requestSettings);
+
+    return tapisV3.sendRequest(requestSettings);
+};
+
+//
+/////////////////////////////////////////////////////////////////////
+//
 // generic Tapis V3 meta operations
 //
 
@@ -225,10 +273,11 @@ tapisV3.createRecord = function(collection, data) {
 
     // TODO: error if no collection
     // TODO: error if no data
+    var postData = null;
     if (Array.isArray(data))
-        var postData = JSON.stringify(data);
+        postData = JSON.stringify(data);
     else
-        var postData = JSON.stringify([ data ]);
+        postData = JSON.stringify([ data ]);
 
     return ServiceAccount.getToken()
         .then(function(token) {
@@ -1263,7 +1312,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
 
     if (!keep_uuids) delete study['vdjserver'];
 
-    for (var i in models) {
+    for (let i in models) {
         var model = models[i].value;
         model['repertoire_id'] = models[i].uuid;
         model['study'] = study;
@@ -1275,7 +1324,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
         .catch(function(error) { Promise.reject(error); });
 
     config.log.info(context, 'gathered ' + models.length + ' subjects.');
-    for (var i in models) {
+    for (let i in models) {
         subjectMetadata[models[i].uuid] = models[i].value;
     }
 
@@ -1284,7 +1333,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
         .catch(function(error) { Promise.reject(error); });
 
     config.log.info(context, 'gathered ' + models.length + ' sample processings.');
-    for (var i in models) {
+    for (let i in models) {
         sampleMetadata[models[i].uuid] = models[i].value;
     }
 
@@ -1293,14 +1342,14 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
         .catch(function(error) { Promise.reject(error); });
 
     config.log.info(context, 'gathered ' + models.length + ' data processings.');
-     for (var i in models) {
+     for (let i in models) {
         dpMetadata[models[i].uuid] = models[i].value;
     }
 
     var dpschema = tapisV3.schema.get_schema('DataProcessing');
 
     // put into AIRR format
-    for (var i in repertoireMetadata) {
+    for (let i in repertoireMetadata) {
         var rep = repertoireMetadata[i];
         var subject = subjectMetadata[rep['subject']['vdjserver_uuid']];
         if (! subject) {
@@ -1311,7 +1360,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
         rep['subject'] = subject;
 
         var samples = [];
-        for (var j in rep['sample']) {
+        for (let j in rep['sample']) {
             var sample = sampleMetadata[rep['sample'][j]['vdjserver_uuid']];
             if (! sample) {
                 config.log.info(context, 'cannot collect sample: '
@@ -1323,7 +1372,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
         rep['sample'] = samples;
 
         var dps = [];
-        for (var j in rep['data_processing']) {
+        for (let j in rep['data_processing']) {
             // can be null if no analysis has been done
             if (rep['data_processing'][j]['vdjserver_uuid']) {
                 var dp = dpMetadata[rep['data_processing'][j]['vdjserver_uuid']];
@@ -1971,13 +2020,80 @@ tapisV3.createADCDownloadCachePostit = function(cache_uuid, obj) {
 // ADC Async functions
 //
 
+// create metadata record for async query
+tapisV3.createAsyncQueryMetadata = function(endpoint, collection, body) {
+
+    var meta_name = 'async_query';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        obj['value']['endpoint'] = endpoint;
+        obj['value']['collection'] = collection;
+        obj['value']['status'] = 'PENDING';
+        obj['value']['body'] = body;
+        if (body['notification']) obj['value']['notification'] = body['notification'];
+
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
+
 // get async query status
-tapisV3.getAsyncQueryStatus = function(status_uuid) {
+tapisV3.getAsyncQueryStatus = async function(status_uuid) {
     //if (tapisSettings.shouldInjectError("tapisV3.getMetadataForProject")) return tapisSettings.performInjectError();
 
     var filter = { "uuid": status_uuid, "name": "async_query" };
     var query = JSON.stringify(filter);
+    var result = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+                    .catch(function(error) { return Promise.reject(error); });
+
+    if (result.length == 0) return Promise.resolve(null);
+    // yikes!
+    if (result.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid: ' + status_uuid));
+
+    return Promise.resolve(result[0]);
+};
+
+tapisV3.getAsyncQueryMetadataWithStatus = function(status, created) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getMetadataForProject")) return tapisSettings.performInjectError();
+
+    // TODO: sort by created date
+    var filter = { "name": "async_query", "value.status": status };
+    var query = JSON.stringify(filter);
     return tapisV3.performMultiServiceQuery('tapis_meta', query);
+};
+
+tapisV3.createAsyncQueryPostit = function(obj) {
+
+    var postData = {
+    };
+    if (obj['allowedUses']) postData['allowedUses'] = obj['allowedUses'];
+    if (obj['validSeconds']) postData['validSeconds'] = obj['validSeconds'];
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/postits/' + tapisSettings.storageSystem + '/' + obj['path'],
+                method: 'POST',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
+        });
 };
 
 //

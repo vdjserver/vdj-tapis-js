@@ -42,6 +42,7 @@ var config = tapisSettings.config;
 var ServiceAccount = tapisIO.serviceAccount;
 var GuestAccount = tapisIO.guestAccount;
 var webhookIO = require('vdj-tapis-js/webhookIO');
+var adc_mongo_query = require('vdj-tapis-js/adc_mongo_query');
 
 // Node Libraries
 var _ = require('underscore');
@@ -51,6 +52,47 @@ var fs = require('fs');
 const zlib = require('zlib');
 
 var airr = require('airr-js');
+
+// endpoint specific processing
+var rearrangement = {};
+rearrangement.cleanRecord = function(record, airr_schema, projection, all_fields) {
+    if (!record) return;
+    if ((typeof record) != 'object') return;
+
+    if (!record['sequence_id']) {
+        if (record['_id']['$oid']) record['sequence_id'] = record['_id']['$oid'];
+        else record['sequence_id'] = record['_id'];
+    }
+
+    // gene calls, join back to string
+    if ((typeof record['v_call']) == "object") record['v_call'] = record['v_call'].join(',');
+    if ((typeof record['d_call']) == "object") record['d_call'] = record['d_call'].join(',');
+    if ((typeof record['j_call']) == "object") record['j_call'] = record['j_call'].join(',');
+
+    // TODO: general this a bit in case we add more
+    if (record['_id']) delete record['_id'];
+    if (record['_etag']) delete record['_etag'];
+    if (record['vdjserver_junction_suffixes'])
+        if (projection['vdjserver_junction_suffixes'] == undefined)
+            delete record['vdjserver_junction_suffixes'];
+
+    // add any missing required fields
+    if (all_fields.length > 0) {
+        airr.addFields(record, all_fields, airr_schema);
+    }
+    // apply projection
+    var keys = Object.keys(record);
+    if (Object.keys(projection).length > 0) {
+        for (var p = 0; p < keys.length; ++p)
+            if (projection[keys[p]] == undefined)
+                delete record[keys[p]];
+    } 
+    return record;
+}
+
+var endpoint_map = {
+    "rearrangement": rearrangement
+};
 
 // test connection
 mongoIO.testConnection = async function() {
@@ -117,6 +159,7 @@ function getAllSuffixes(str,size) {
     return result;
 }
 
+// TODO: need to use germline DB for this
 function parseGene(str) {
     var result = {
         gene: null,
@@ -137,6 +180,41 @@ function parseGene(str) {
     }
     
     return result;
+}
+
+//
+// Generic mongo operations
+//
+
+// perform a query
+
+// perform an aggregation
+mongoIO.performAggregation = async function(collection_name, agg) {
+    var context = 'mongoIO.performAggregation';
+
+    return new Promise(function(resolve, reject) {
+
+        MongoClient.connect(mongoSettings.url, async function(err, db) {
+            if (err) return reject(new Error('Could not connect to database.'));
+
+            config.log.info(context, "Connected successfully to mongodb");
+
+            var v1airr = db.db(mongoSettings.dbname);
+            var collection = v1airr.collection(collection_name);
+
+            // perform a facets aggregation query
+            var records = await collection.aggregate(agg).toArray()
+                .catch(function(error) {
+                    db.close();
+                    return reject(new Error('Error performing aggregation: ' + error));
+                });
+
+            config.log.info(context, 'Retrieve ' + records.length + ' records.');
+
+            db.close();
+            return resolve(records);
+        });
+    });
 }
 
 mongoIO.processRearrangementRow = function(row, rep, dp_id, load_set) {
@@ -610,4 +688,184 @@ mongoIO.unloadRearrangementData = async function(dataLoad, repertoire) {
 
     // delete all rearrangements for repertoire
     return mongoIO.deleteLoadSet(repertoire['repertoire_id'], null, loadCollection);
+}
+
+mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
+    var context = 'mongoIO.performQueryToFile';
+    var facets = false;
+    var body = metadata['value']['body'];
+
+    return new Promise(function(resolve, reject) {
+
+        // the query should have already been constructed upon submission request so we don't expect any errors at this point.
+        // TODO: if async API every used for more than rearrangements, this needs to be parameterized
+        let airr_schema = airr.get_schema('Rearrangement')['definition'];
+        let error = { message: '' };
+        let query = adc_mongo_query.constructQueryOperation(airr, airr_schema, body['filters'], error, false, true);
+        let parsed_query = JSON.parse(query);
+        let from = null;
+        if (body['from'] != null) from = body['from'];
+        let size = null;
+        if (body['size'] != null) size = body['size'];
+        let format = null;
+        if (body['format'] != null) format = body['format'];
+
+        // AIRR fields
+        var all_fields = [];
+        if (body['include_fields']) {
+            airr.collectFields(airr_schema, body['include_fields'], all_fields, null);
+        }
+        // collect all AIRR schema fields
+        var schema_fields = [];
+        airr.collectFields(airr_schema, 'airr-schema', schema_fields, null);
+    
+        // field projection
+        var projection = {};
+        if (body['fields'] != undefined) {
+            var fields = body['fields'];
+            for (let i = 0; i < fields.length; ++i) {
+                if (fields[i] == '_id') continue;
+                if (fields[i] == '_etag') continue;
+                projection[fields[i]] = 1;
+            }
+            projection['_id'] = 1;
+    
+            // add AIRR required fields to projection
+            // NOTE: projection will not add a field if it is not already in the document
+            // so below after the data has been retrieved, missing fields need to be
+            // added with null values.
+            if (all_fields.length > 0) {
+                for (var r in all_fields) projection[all_fields[r]] = 1;
+            }
+    
+            // add to field list so will be put in response if necessary
+            for (let i = 0; i < fields.length; ++i) {
+                if (fields[i] == '_id') continue;
+                all_fields.push(fields[i]);
+            }
+        }
+
+        // determine TSV headers
+        var headers = [];
+        if (format == 'tsv') {
+            // if no projection
+            if (Object.keys(projection).length == 0) {
+                // then return all schema fields
+                headers = schema_fields;
+            } else {
+                // else only return specified fields
+                // schema fields first
+                for (let p = 0; p < schema_fields.length; ++p) {
+                    if (projection[schema_fields[p]]) headers.push(schema_fields[p]);
+                }
+                // add custom fields on end
+                for (let p in projection) {
+                    if (p == '_id') continue;
+                    if (projection[p]) {
+                        if (schema_fields.indexOf(p) >= 0) continue;
+                        else headers.push(p);
+                    }
+                }
+            }
+        }
+
+        // Open read/write streams
+        config.log.info(context, 'writing to file: ' + filename);
+        var writable = fs.createWriteStream(filename)
+            .on('error', function(e) { let msg = config.log.error(context, 'caught error: ' + e); return reject(new Error(msg)); });
+
+        writable.on('finish', function() {
+            config.log.info(context, 'finish of write stream');
+            //return resolve(filename);
+        });
+
+                // process the stream
+//                readable.pipe(transform)
+//                    .on('error', function(e) { let msg = config.log.error(context, 'caught error: ' + e); return reject(new Error(msg)); })
+//                    .pipe(writable)
+//                    .on('finish', function() {
+//                        config.log.info(context, 'end of stream');
+//                        writable.end();
+//                    });
+
+/*
+                readable.pipe(zlib.createGunzip())
+                    .pipe(transform)
+                    .on('error', function(e) { console.log('caught error'); console.log(e); return reject(e); })
+                    .pipe(zlib.createGzip())
+                    .pipe(writable)
+                    .on('finish', function() {
+                        console.log('end of stream');
+                        writable.end();
+                    });
+*/
+
+
+        var first = true;
+        var cnt = 0;
+        var endpoint_process = endpoint_map[metadata['value']['endpoint']];
+        return MongoClient.connect(mongoSettings.url, async function(err, db) {
+            if (err) {
+                var msg = "Could not connect to database: " + err;
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
+                return reject(new Error(msg))
+            }
+
+            var v1airr = db.db(mongoSettings.dbname);
+            var collection = v1airr.collection(metadata['value']['collection']);
+            config.log.info(context, JSON.stringify(parsed_query));
+
+            // perform a normal query
+            var cursor = collection.find(parsed_query);
+            if (from) cursor.skip(from);
+            if (size) cursor.limit(size);
+            if (projection) cursor.project(projection);
+            while (await cursor.hasNext()) {
+                var entry = await cursor.next();
+                cnt += 1;
+    
+                // data cleanup
+                endpoint_process.cleanRecord(entry, airr_schema, projection, all_fields);
+                //config.log.info(context, 'entry');
+    
+                // write data
+                switch (format) {
+                    case 'tsv':
+                        if (first) {
+                            writable.write(headers.join('\t'));
+                            writable.write('\n');
+                        } else {
+                            let vals = [];
+                            for (let i = 0; i < headers.length; ++i) {
+                                let p = headers[i];
+                                //if (config.debug) console.log(p, entry[p]);
+                                if (entry[p] == undefined) vals.push('');
+                                else vals.push(entry[p]);
+                            }
+                            writable.write(vals.join('\t'));
+                            writable.write('\n');
+                        }
+                        break;
+                    case 'jsonarray':
+                        break;
+                    case 'json':
+                    default:
+                        if (first) {
+                            writable.write('{"Info":' + JSON.stringify(config.info) + ',"Rearrangement": [\n');
+                        } else writable.write(',\n')
+                        writable.write(JSON.stringify(entry));
+                        break;
+                }
+                first = false;
+            }
+            config.log.info(context, 'records written: ' + cnt);
+
+            db.close();
+            if (format == 'json') writable.write(']}\n');
+            else writable.write('\n');
+            writable.end();
+            return resolve(cnt);
+        });
+    });
 }

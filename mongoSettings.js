@@ -26,6 +26,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+// local DB, use tapisSettings for Tapis DB
 var mongoSettings = {
     // MongoDB Settings
     hostname: process.env.MONGODB_HOST,
@@ -39,14 +40,26 @@ var mongoSettings = {
 
 module.exports = mongoSettings;
 
-console.log('VDJ-ADC-API INFO: Using query collection: ' + mongoSettings.queryCollection);
-console.log('VDJ-ADC-API INFO: Using load collection: ' + mongoSettings.loadCollection);
+mongoSettings.set_config = function(config) {
+    var context = 'mongo';
 
-if (mongoSettings.username) {
-    mongoSettings.url = 'mongodb://'
-        + mongoSettings.username + ':' + mongoSettings.userSecret + '@'
-        + mongoSettings.hostname + ':27017/' + mongoSettings.dbname;
-} else {
-    mongoSettings.url = 'mongodb://'
-        + mongoSettings.hostname + ':27017/' + mongoSettings.dbname;
+    if (config) {
+        config.log.info(context, 'config object set for app: ' + config.name);
+        mongoSettings.config = config;
+    }
+
+    config.log.info(context, 'Using DB: ' + mongoSettings.dbname);
+    config.log.info(context, 'Using query collection: ' + mongoSettings.queryCollection);
+    config.log.info(context, 'Using load collection: ' + mongoSettings.loadCollection);
+    
+    if (mongoSettings.username) {
+        mongoSettings.url = 'mongodb://'
+            + mongoSettings.username + ':' + mongoSettings.userSecret + '@'
+            + mongoSettings.hostname + ':27017/' + mongoSettings.dbname;
+    } else {
+        mongoSettings.url = 'mongodb://'
+            + mongoSettings.hostname + ':27017/' + mongoSettings.dbname;
+    }
+
+    return mongoSettings;
 }

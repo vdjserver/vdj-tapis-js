@@ -44,6 +44,7 @@ ServiceAccountV3.getToken = function() {
     var that = this;
 
     // TODO: simple expire hack, we should use Tapis instead
+    /*
     if (this.tapisToken) {
         if (!this.created) {
             this.created = new Date();
@@ -52,7 +53,7 @@ ServiceAccountV3.getToken = function() {
             let diffMs = (now - this.created);
             if (diffMs < 36000000) return Promise.resolve(this.tapisToken); // 1 hour
         }
-    }
+    } */
 
     return tapisV3.getToken(this)
         .then(function(responseObject) {
