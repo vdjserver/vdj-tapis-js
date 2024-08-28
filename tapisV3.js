@@ -124,6 +124,70 @@ tapisV3.getToken = async function(auth) {
     return Promise.resolve(data.result);
 };
 
+tapisV3.getClient = async function(client_id) {
+
+    return ServiceAccount.getToken()
+        .then(async function(token) {
+
+        var url = 'https://' + tapisSettings.hostnameV3 + '/v3/oauth2/clients/' + client_id;
+        var requestSettings = {
+            url: url,
+            method: 'GET',
+            headers: {
+                'X-Tapis-Token': ServiceAccount.accessToken(),
+                'Content-Type':   'application/json'
+            }
+        };
+        //console.log(requestSettings);
+    
+        var msg = null;
+        var data = await tapisV3.sendRequest(requestSettings)
+            .catch(function(error) {
+                return Promise.reject(error);
+            });
+    
+        if (data.status != 'success') {
+            msg = 'Tapis token response returned an error: ' + data.message;
+            return Promise.reject(new Error(msg));
+        }
+    
+        return Promise.resolve(data.result);
+    });
+};
+
+tapisV3.getOAuthToken = async function(client, code) {
+    var postData = {
+        code: code,
+        redirect_uri: client['callback_url'],
+        grant_type: 'authorization_code'
+    };
+
+    var url = 'https://' + tapisSettings.hostnameV3 + '/v3/oauth2/tokens';
+    var requestSettings = {
+        url: url,
+        method: 'POST',
+        data: postData,
+        headers: {
+            'Authorization': 'Basic ' + Buffer.from(client['client_id'] + ':' + client['client_key']).toString('base64'),
+            'Content-Type': 'application/json'
+        }
+    };
+    console.log(requestSettings);
+
+    var msg = null;
+    var data = await tapisV3.sendRequest(requestSettings)
+        .catch(function(error) {
+            return Promise.reject(error);
+        });
+
+    if (data.status != 'success') {
+        msg = 'Tapis token response returned an error: ' + data.message;
+        return Promise.reject(new Error(msg));
+    }
+
+    return Promise.resolve(data.result);
+};
+
 //
 /////////////////////////////////////////////////////////////////////
 //
@@ -1484,6 +1548,24 @@ tapisV3.getUserVerificationMetadata = function(username) {
     return tapisV3.performServiceQuery('tapis_meta', query);
 };
 
+tapisV3.createUserVerificationMetadata = function(username, verified) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createUserVerificationMetadata")) return tapisSettings.performInjectError();
+
+    var meta_name = 'userVerification';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        obj['value']['username'] = username;
+        obj['value']['isVerified'] = false;
+        if (verified) obj['value']['isVerified'] = true;
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
+
 tapisV3.getUserProfile = function(username) {
     //if (tapisSettings.shouldInjectError("tapisV3.getUserProfile")) return tapisSettings.performInjectError();
 
@@ -1492,6 +1574,25 @@ tapisV3.getUserProfile = function(username) {
     return tapisV3.performServiceQuery('tapis_meta', query);
 };
 
+tapisV3.createUserProfile = function(user, username) {
+    //if (tapisSettings.shouldInjectError("tapisIO.createUserProfile")) return tapisSettings.performInjectError();
+
+    var meta_name = 'profile';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
+
+        let obj = s.template();
+        if (user) obj['value'] = user;
+        else {
+            obj['value']['username'] = username;
+            obj['value']['email'] = username;
+        }
+        return tapisV3.createDocument(meta_name, obj['value'], null, obj['value']['username']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
+};
 
 tapisV3.getTapisUserProfile = function(accessToken, username) {
     //if (tapisSettings.shouldInjectError("tapisIO.getTapisUserProfile")) return tapisSettings.performInjectError();
