@@ -339,14 +339,13 @@ tapisV3.createDocument = function(name, value, associationIds, owner, extras, sk
 
     return tapisV3.createRecord(collection, postData)
         .then(function(data) {
-            console.log(JSON.stringify(data));
+            //console.log(JSON.stringify(data));
             var filter = { "uuid": postData['uuid'] };
-            var query = JSON.stringify(filter);
-            return tapisV3.performMultiServiceQuery(collection, query);
+            return tapisV3.performMultiServiceQuery(collection, filter);
         })
         .then(function(data) {
             if (data.length != 1) return Promise.reject(new Error('Internal error: new document query with uuid: ' + postData['uuid'] + ' returned incorrect number of documents (' + data.length + ' != 1)'));
-            console.log(JSON.stringify(data));
+            //console.log(JSON.stringify(data));
             return Promise.resolve(data[0]);
         });
 };
@@ -387,8 +386,7 @@ tapisV3.updateDocument = async function(meta_uuid, name, value, associationIds, 
 
     // retrieve by uuid
     var filter = { "uuid": meta_uuid };
-    var query = JSON.stringify(filter);
-    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // do some checks
@@ -433,8 +431,7 @@ tapisV3.updateDocument = async function(meta_uuid, name, value, associationIds, 
 
     // retrieve again and return
     filter = { "uuid": meta_uuid };
-    query = JSON.stringify(filter);
-    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // yikes!
@@ -538,10 +535,11 @@ tapisV3.performQuery = function(collection, query, projection, page, pagesize, c
                 url += '/_size';
             }
             if (query != null) {
+                let filter = JSON.stringify(query);
                 if (mark) url += '&';
                 else url += '?';
                 mark = true;
-                url += 'filter=' + encodeURIComponent(query);
+                url += 'filter=' + encodeURIComponent(filter);
             }
             if (projection != null) {
                 if (mark) url += '&';
@@ -596,10 +594,11 @@ tapisV3.performServiceQuery = function(collection, query, projection, page, page
                 url += '/_size';
             }
             if (query != null) {
+                let filter = JSON.stringify(query);
                 if (mark) url += '&';
                 else url += '?';
                 mark = true;
-                url += 'filter=' + encodeURIComponent(query);
+                url += 'filter=' + encodeURIComponent(filter);
             }
             if (projection != null) {
                 if (mark) url += '&';
@@ -707,7 +706,7 @@ tapisV3.performMultiQuery = function(collection, query, projection, start_page, 
     //console.log(query);
     var doQuery = function(page) {
         var queryFunction = tapisV3.performQuery;
-        if (query && query.length > tapisSettings.large_query_size) queryFunction = tapisV3.performLargeQuery;
+        if (query && JSON.stringify(query).length > tapisSettings.large_query_size) queryFunction = tapisV3.performLargeQuery;
         return queryFunction(collection, query, projection, page, pagesize)
             .then(function(records) {
                 if (tapisSettings.debugConsole) console.log('TAPIS-API INFO: query returned ' + records.length + ' records.');
@@ -763,34 +762,26 @@ tapisV3.performMultiUserQuery = function(username, collection, query, projection
     if (!start_page) start_page = 1;
     if (!pagesize) pagesize = 1000;
 
-    //console.log(query);
+    // modify query to add user permission
+    var new_query = query;
+    if (username != tapisSettings.serviceAccountKey) {
+        let key = "permission." + username + ".write";
+        let perm = {};
+        perm[key] = true;
+        new_query = { "$and": [ query, perm ] };
+    }
+
     var doQuery = function(page) {
         var queryFunction = tapisV3.performServiceQuery;
         // TODO: do we large query?
         //if (query && query.length > tapisSettings.large_query_size) queryFunction = tapisV3.performLargeQuery;
-        return queryFunction(collection, query, projection, page, pagesize)
+        return queryFunction(collection, new_query, projection, page, pagesize)
             .then(function(records) {
                 if (tapisSettings.debugConsole) console.log('TAPIS-API INFO: query returned ' + records.length + ' records.');
                 if (records.length == 0) {
                     return Promise.resolve(models);
                 } else {
-                    // service account sees all
-                    if (username == tapisSettings.serviceAccountKey)
-                        models = models.concat(records);
-                    else {
-                        // otherwise check that user has write permission
-                        for (let i = 0; i < records.length; ++i) {
-                            let obj = records[i];
-                            if (obj.permission) {
-                                for (let j = 0; j < obj.permission.length; ++j) {
-                                    if (obj.permission[j]['username'] == username && obj.permission[j]['permission'] && obj.permission[j]['permission']['write']) {
-                                        models.push(obj);
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    models = models.concat(records);
                     if (records.length < pagesize) return Promise.resolve(models);
                     else return doQuery(page+1);
                 }
@@ -908,8 +899,9 @@ tapisV3.createProjectMetadata = async function(username, project) {
         lastUpdated: date,
         name: 'private_project',
         value: project,
-        permission: [{ "username": username, permission: { read: true, write: true } }]
+        permission: {}
     };
+    postData['permission'][username] = { read: true, write: true };
 
     // validate
     if (tapisV3.schema) {
@@ -937,8 +929,7 @@ tapisV3.getProjectMetadata = function(username, project_uuid) {
 
     var filter = { "name": "private_project" };
     if (project_uuid) filter['uuid'] = project_uuid;
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiUserQuery(username, 'tapis_meta', query);
+    return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
 };
 
 // get public projects for a user
@@ -948,8 +939,7 @@ tapisV3.getPublicProjectMetadata = function(username, project_uuid) {
 
     var filter = { "name": "public_project" };
     if (project_uuid) filter['uuid'] = project_uuid;
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiUserQuery(username, 'tapis_meta', query);
+    return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
 };
 
 // get any/all public projects
@@ -959,8 +949,7 @@ tapisV3.getAnyPublicProjectMetadata = function(project_uuid) {
 
     var filter = { "name": { "$in": ["private_project", "public_project"] } };
     if (project_uuid) filter['uuid'] = project_uuid;
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 // query metadata associated with project
@@ -976,8 +965,7 @@ tapisV3.queryMetadataForProject = function(project_uuid, meta_name, additional_f
             filter[k] = additional_filters[k];
         }
     }
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 // create metadata associated with project
@@ -1033,8 +1021,7 @@ tapisV3.updateMetadataForProject = async function(project_uuid, meta_uuid, obj) 
 
     // retrieve by uuid
     var filter = { "uuid": meta_uuid };
-    var query = JSON.stringify(filter);
-    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // do some checks
@@ -1084,8 +1071,7 @@ tapisV3.updateMetadataForProject = async function(project_uuid, meta_uuid, obj) 
 
     // retrieve again and return
     filter = { "uuid": meta_uuid };
-    query = JSON.stringify(filter);
-    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // yikes!
@@ -1100,8 +1086,7 @@ tapisV3.getMetadataForProject = function(project_uuid, meta_uuid) {
     //if (tapisSettings.shouldInjectError("tapisV3.getMetadataForProject")) return tapisSettings.performInjectError();
 
     var filter = { "uuid": meta_uuid, "associationIds": project_uuid };
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 // delete metadata with uuid associated with project
@@ -1145,8 +1130,7 @@ tapisV3.addProjectPermissionForUser = async function(project_uuid, username) {
 
     // retrieve by uuid
     var filter = { "uuid": project_uuid };
-    var query = JSON.stringify(filter);
-    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // do some checks
@@ -1163,15 +1147,13 @@ tapisV3.addProjectPermissionForUser = async function(project_uuid, username) {
     if (!metadata['_id']) return Promise.reject(new Error('internal error, metadata return is missing _id'));
     if (!metadata['_id']['$oid']) return Promise.reject(new Error('internal error, metadata return is missing $oid'));
 
-    // check that username has not already been added
+    // check that username has not already been added with write access
     var found = false;
-    for (let i in metadata['permission']) {
-        if (metadata['permission'][i]['username'] == username) found = true;
-    }
+    if (metadata['permission'][username] && metadata['permission'][username]['write']) found = true;
     if (found) return Promise.resolve(metadata);
 
     // add and save
-    metadata['permission'].push({ "username": username, permission: { read: true, write: true } });
+    metadata['permission'][username] = { read: true, write: true };
     metadata['lastUpdated'] = new Date().toISOString();
 
     // validate
@@ -1188,8 +1170,7 @@ tapisV3.addProjectPermissionForUser = async function(project_uuid, username) {
 
     // retrieve again and return
     filter = { "uuid": project_uuid };
-    query = JSON.stringify(filter);
-    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // yikes!
@@ -1205,8 +1186,7 @@ tapisV3.removeProjectPermissionForUser = async function(project_uuid, username) 
 
     // retrieve by uuid
     var filter = { "uuid": project_uuid };
-    var query = JSON.stringify(filter);
-    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    var metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // do some checks
@@ -1225,10 +1205,10 @@ tapisV3.removeProjectPermissionForUser = async function(project_uuid, username) 
 
     // new permission list without user
     var found = false;
-    var new_permissions = [];
-    for (let i in metadata['permission']) {
-        if (metadata['permission'][i]['username'] == username) found = true;
-        else new_permissions.push(metadata['permission'][i]);
+    var new_permissions = metadata['permission'];
+    if (metadata['permission'][username]) {
+        found = true;
+        delete new_permissions[username];
     }
     // no need to update if username was not in the list
     if (!found) return Promise.resolve(metadata);
@@ -1251,8 +1231,7 @@ tapisV3.removeProjectPermissionForUser = async function(project_uuid, username) 
 
     // retrieve again and return
     filter = { "uuid": project_uuid };
-    query = JSON.stringify(filter);
-    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    metadata = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
         .catch(function(error) { Promise.reject(error); });
 
     // yikes!
@@ -1593,8 +1572,7 @@ tapisV3.getUserVerificationMetadata = function(username) {
     //if (tapisSettings.shouldInjectError("tapisV3.getUserVerificationMetadata")) return tapisSettings.performInjectError();
 
     var filter = { "name": "userVerification", "value.username": username, "owner": ServiceAccount.username };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 };
 
 tapisV3.createUserVerificationMetadata = function(username, verified) {
@@ -1619,8 +1597,7 @@ tapisV3.getUserProfile = function(username) {
     //if (tapisSettings.shouldInjectError("tapisV3.getUserProfile")) return tapisSettings.performInjectError();
 
     var filter = { "name": "profile", "owner": username };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 };
 
 tapisV3.createUserProfile = function(user, username) {
@@ -1716,8 +1693,7 @@ tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
         .then(function(data) {
             //console.log(JSON.stringify(data));
             var filter = { "uuid": uuid };
-            var query = JSON.stringify(filter);
-            return tapisV3.performServiceQuery('tapis_meta', query);
+            return tapisV3.performServiceQuery('tapis_meta', filter);
         })
         .then(function(data) {
             //console.log(JSON.stringify(data));
@@ -1761,8 +1737,7 @@ tapisV3.getProjectLoadMetadata = function(projectUuid, collection) {
         "value.projectUuid": projectUuid,
         "value.collection": collection
     };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 };
 
 // query project load records
@@ -1783,8 +1758,7 @@ tapisV3.queryProjectLoadMetadata = function(projectUuid, collection, shouldLoad,
     if (rearrangementDataLoaded === false) filter["value.rearrangementDataLoaded"] = false;
     else if (rearrangementDataLoaded === true) filter["value.rearrangementDataLoaded"] = true;
     
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 // get list of projects to be loaded
@@ -1797,8 +1771,8 @@ tapisV3.getProjectsToBeLoaded = function(collection) {
         "value.shouldLoad": true,
         "value.isLoaded": false
     };
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 // status record for a rearrangement load
@@ -1829,8 +1803,8 @@ tapisV3.getRearrangementsToBeLoaded = function(projectUuid, collection) {
         "value.projectUuid": projectUuid,
         "value.collection": collection
     };
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 //
@@ -1876,8 +1850,7 @@ tapisV3.performFacets = function(collection, query, field, start_page, pagesize)
 tapisV3.getSystemADCRepositories = function() {
 
     var filter = { "name": "adc_system_repositories", "owner": ServiceAccount.username };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 }
 
 // ADC download cache status
@@ -1903,8 +1876,7 @@ tapisV3.getADCDownloadCache = function() {
     //if (tapisSettings.shouldInjectError("tapisIO.getADCDownloadCache")) return tapisSettings.performInjectError();
 
     var filter = { "name": "adc_cache", "owner": ServiceAccount.username };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 }
 
 // create metadata entry for cached ADC study
@@ -2046,8 +2018,7 @@ tapisV3.getAsyncQueryStatus = async function(status_uuid) {
     //if (tapisSettings.shouldInjectError("tapisV3.getMetadataForProject")) return tapisSettings.performInjectError();
 
     var filter = { "uuid": status_uuid, "name": "async_query" };
-    var query = JSON.stringify(filter);
-    var result = await tapisV3.performMultiServiceQuery('tapis_meta', query)
+    var result = await tapisV3.performMultiServiceQuery('tapis_meta', filter)
                     .catch(function(error) { return Promise.reject(error); });
 
     if (result.length == 0) return Promise.resolve(null);
@@ -2062,8 +2033,7 @@ tapisV3.getAsyncQueryMetadataWithStatus = function(status, created) {
 
     // TODO: sort by created date
     var filter = { "name": "async_query", "value.status": status };
-    var query = JSON.stringify(filter);
-    return tapisV3.performMultiServiceQuery('tapis_meta', query);
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 tapisV3.createAsyncQueryPostit = function(obj) {
@@ -2123,8 +2093,7 @@ tapisV3.getStatisticsCache = function() {
     //if (tapisSettings.shouldInjectError("tapisV3.getStatisticsCache")) return tapisSettings.performInjectError();
 
     var filter = { "name": "statistics_cache", "owner": ServiceAccount.username };
-    var query = JSON.stringify(filter);
-    return tapisV3.performServiceQuery('tapis_meta', query);
+    return tapisV3.performServiceQuery('tapis_meta', filter);
 }
 
 /*
