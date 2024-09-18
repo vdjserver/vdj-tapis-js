@@ -681,7 +681,7 @@ tapisV3.performLargeQuery = function(collection, query, projection, page, pagesi
             var requestSettings = {
                 url: url,
                 method: 'POST',
-                data: JSON.stringify(postData),
+                data: postData,
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
@@ -804,7 +804,7 @@ tapisV3.performAggregation = function(collection, aggregation, query, field, pag
         .then(function(token) {
             var url = 'https://' + tapisSettings.hostnameV3 + '/v3/meta/' + tapisSettings.mongo_dbname + '/' + collection + '/_aggrs/' + aggregation;
             url += '?avars=';
-            url += encodeURIComponent('{"match":' + query + ',"field":"' + field + '"}');
+            url += encodeURIComponent('{"match":' + JSON.stringify(query) + ',"field":"' + field + '"}');
             var mark = true;
 
             if (page != null) {
@@ -841,7 +841,7 @@ tapisV3.performLargeAggregation = function(collection, aggregation, query, field
     if (! query) return Promise.reject(new Error('TAPIS-API ERROR: Empty query passed to tapisV3.performLargeAggregation'));
     if (! field) return Promise.reject(new Error('TAPIS-API ERROR: Empty field passed to tapisV3.performLargeAggregation'));
 
-    var postData = '{"match":' + query + ',"field":"' + field + '"}';
+    var postData = {"match": query, "field": field};
     //console.log(postData);
 
     return GuestAccount.getToken()
@@ -1821,7 +1821,7 @@ tapisV3.performFacets = function(collection, query, field, start_page, pagesize)
     //console.log(query);
     var doAggr = function(page) {
         var aggrFunction = tapisV3.performAggregation;
-        if (query && query.length > tapisSettings.large_query_size) {
+        if (query && JSON.stringify(query).length > tapisSettings.large_query_size) {
             tapisSettings.config.log.info(context, 'Large facets query detected.');
             aggrFunction = tapisV3.performLargeAggregation;
         }
