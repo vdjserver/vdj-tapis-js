@@ -217,6 +217,35 @@ mongoIO.performAggregation = async function(collection_name, agg) {
     });
 }
 
+// perform a query count
+mongoIO.queryCount = async function(collection_name, query) {
+    var context = 'mongoIO.queryCount';
+
+    return new Promise(function(resolve, reject) {
+
+        MongoClient.connect(mongoSettings.url, async function(err, db) {
+            if (err) return reject(new Error('Could not connect to database.'));
+
+            config.log.info(context, "Connected successfully to mongodb");
+
+            var v1airr = db.db(mongoSettings.dbname);
+            var collection = v1airr.collection(collection_name);
+
+            // perform a facets aggregation query
+            var cnt = await collection.find(query).count()
+                .catch(function(error) {
+                    db.close();
+                    return reject(new Error('Error performing query count: ' + error));
+                });
+
+            config.log.info(context, 'Would retrieve ' + cnt + ' records.');
+
+            db.close();
+            return resolve([{ count: cnt }]);
+        });
+    });
+}
+
 mongoIO.processRearrangementRow = function(row, rep, dp_id, load_set) {
     // identifiers
     if (row['sequence_id']) delete row['sequence_id'];
