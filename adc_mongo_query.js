@@ -28,8 +28,16 @@
 var ADCMongoQuery = {};
 module.exports = ADCMongoQuery;
 
-var tapisV3 = require('vdj-tapis-js/tapisV3');
-var config = tapisV3.config;
+// Tapis
+var tapisSettings = require('vdj-tapis-js/tapisSettings');
+var tapisIO = tapisSettings.get_default_tapis();
+var ServiceAccount = tapisIO.serviceAccount;
+var GuestAccount = tapisIO.guestAccount;
+var authController = tapisIO.authController;
+var webhookIO = require('vdj-tapis-js/webhookIO');
+var mongoIO = require('vdj-tapis-js/mongoIO');
+
+var config = tapisSettings.config;
 
 // escape strings for regex, double \\ for restheart
 var escapeString = function(text) {
@@ -389,4 +397,74 @@ ADCMongoQuery.generateAsyncCountQuery = function(metadata) {
 
     //console.log(JSON.stringify(count_query));
     return count_query;
+}
+
+// Perform ADC facets query
+//
+ADCMongoQuery.performFacets = async function(collection, query, facets) {
+    var context = 'ADCMongoQuery.performFacets';
+
+    let field = '$' + facets;
+    let agg = [];
+    if (query) agg.push({ $match: query });
+    agg.push({ $group: { _id: field, count: { $sum: 1}} });
+
+    let records = await mongoIO.performAggregation(collection, agg)
+        .catch(function(error) {
+            return Promise.reject(error);
+        });
+
+    //console.log(JSON.stringify(records, null, 2));
+
+    let results = [];
+    if (records.length == 0) {
+        results = [];
+    } else {
+        // loop through records, clean data
+        // and collapse arrays
+        for (let i in records) {
+            let new_entries = [];
+            let entry = records[i];
+            if (entry['_id'] instanceof Array) {
+                // get unique values
+                let values = [];
+                for (var j in entry['_id'])
+                    if (entry['_id'][j] instanceof Array) {
+                        // array of arrays
+                        for (let k in entry['_id'][j]) {
+                            if (values.indexOf(entry['_id'][j][k]) < 0) values.push(entry['_id'][j][k]);
+                        }
+                    } else {
+                        if (values.indexOf(entry['_id'][j]) < 0) values.push(entry['_id'][j]);
+                    }
+                for (let j in values) {
+                    let new_entry = {};
+                    new_entry[facets] = values[j];
+                    new_entry['count'] = entry['count'];
+                    new_entries.push(new_entry);
+                }
+                //console.log(values);
+            } else {
+                // only single value
+                let new_entry = {};
+                new_entry[facets] = entry['_id'];
+                new_entry['count'] = entry['count'];
+                new_entries.push(new_entry);
+            }
+            //console.log(new_entries);
+            for (let j in new_entries) {
+                var found = false;
+                for (let k in results) {
+                    if (new_entries[j][facets] == results[k][facets]) {
+                        results[k]['count'] += new_entries[j]['count'];
+                        found = true;
+                        break;
+                    }
+                }
+                if (! found) results.push(new_entries[j]);
+            }
+        }
+    }
+
+    return Promise.resolve(results);
 }
