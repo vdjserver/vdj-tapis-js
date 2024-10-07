@@ -4,7 +4,10 @@
 //
 // mongoIO.js
 // Functions for direct access to MongoDB
-// These are specifically for loading data into the VDJServer ADC Data Repository
+//
+// These functions should be relatively agnostic to the application.
+// Functions specific to the ADC and the VDJServer ADC Data Repository
+// are in adc_mongo_query.js
 //
 // VDJServer Analysis Portal
 // VDJ API Service
@@ -52,47 +55,6 @@ var fs = require('fs');
 const zlib = require('zlib');
 
 var airr = require('airr-js');
-
-// endpoint specific processing
-var rearrangement = {};
-rearrangement.cleanRecord = function(record, airr_schema, projection, all_fields) {
-    if (!record) return;
-    if ((typeof record) != 'object') return;
-
-    if (!record['sequence_id']) {
-        if (record['_id']['$oid']) record['sequence_id'] = record['_id']['$oid'];
-        else record['sequence_id'] = record['_id'];
-    }
-
-    // gene calls, join back to string
-    if ((typeof record['v_call']) == "object") record['v_call'] = record['v_call'].join(',');
-    if ((typeof record['d_call']) == "object") record['d_call'] = record['d_call'].join(',');
-    if ((typeof record['j_call']) == "object") record['j_call'] = record['j_call'].join(',');
-
-    // TODO: general this a bit in case we add more
-    if (record['_id']) delete record['_id'];
-    if (record['_etag']) delete record['_etag'];
-    if (record['vdjserver_junction_suffixes'])
-        if (projection['vdjserver_junction_suffixes'] == undefined)
-            delete record['vdjserver_junction_suffixes'];
-
-    // add any missing required fields
-    if (all_fields.length > 0) {
-        airr.addFields(record, all_fields, airr_schema);
-    }
-    // apply projection
-    var keys = Object.keys(record);
-    if (Object.keys(projection).length > 0) {
-        for (var p = 0; p < keys.length; ++p)
-            if (projection[keys[p]] == undefined)
-                delete record[keys[p]];
-    } 
-    return record;
-}
-
-var endpoint_map = {
-    "rearrangement": rearrangement
-};
 
 // test connection
 mongoIO.testConnection = async function() {
@@ -187,6 +149,40 @@ function parseGene(str) {
 //
 
 // perform a query
+mongoIO.performQuery = async function(collection_name, query, from, size, projection, rowFunction) {
+    var context = 'mongoIO.performQuery';
+
+    return new Promise(function(resolve, reject) {
+
+        return MongoClient.connect(mongoSettings.url, async function(err, db) {
+            if (err) {
+                var msg = "Could not connect to database: " + err;
+                msg = config.log.error(context, msg);
+                webhookIO.postToSlack(msg);
+                return reject(new Error(msg))
+            }
+
+            var v1airr = db.db(mongoSettings.dbname);
+            var collection = v1airr.collection(collection_name);
+
+            // perform a normal query
+            var cursor = collection.find(query);
+            if (from) cursor.skip(from);
+            if (size) cursor.limit(size);
+            if (projection) cursor.project(projection);
+            while (await cursor.hasNext()) {
+                var entry = await cursor.next();
+
+                await rowFunction(entry);
+            }
+
+            db.close();
+            await rowFunction(null);
+
+            return resolve();
+        });
+    });
+}
 
 // perform an aggregation
 mongoIO.performAggregation = async function(collection_name, agg) {
@@ -832,7 +828,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
 
         var first = true;
         var cnt = 0;
-        var endpoint_process = endpoint_map[metadata['value']['endpoint']];
+        var clean_record = adc_mongo_query.endpoint_map[metadata['value']['endpoint']];
         return MongoClient.connect(mongoSettings.url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
@@ -855,7 +851,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
                 cnt += 1;
     
                 // data cleanup
-                endpoint_process.cleanRecord(entry, airr_schema, projection, all_fields);
+                clean_record(entry, airr_schema, projection, all_fields);
                 //config.log.info(context, 'entry');
     
                 // write data

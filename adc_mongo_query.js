@@ -2,7 +2,7 @@
 
 //
 // adc_mongo_query.js
-// Utility functions for processing ADC queries for Mongo database
+// Functions specific to the ADC and the VDJServer ADC Data Repository for Mongo.
 //
 // VDJServer
 // http://vdjserver.org
@@ -46,13 +46,83 @@ var escapeString = function(text) {
     return encoded;
 }
 
+//
 // Clean data record
-// Remove any internal fields
-ADCMongoQuery.cleanRecord = function(record) {
+//
+
+// endpoint specific processing
+var repertoire = {};
+repertoire.cleanRecord = function(record, airr_schema, projection, all_fields) {
+    if (!record) return;
+    if ((typeof record) != 'object') return;
+
     if (record['_id']) delete record['_id'];
     if (record['_etag']) delete record['_etag'];
+
+    // add any missing required fields
+    if (tapisIO.schema) {
+        if (all_fields.length > 0) {
+            tapisIO.schema.addFields(record, all_fields, airr_schema);
+        }
+    }
+
     return record;
 }
+
+
+// endpoint specific processing
+var rearrangement = {};
+rearrangement.cleanRecord = function(record, airr_schema, projection, all_fields) {
+    if (!record) return;
+    if ((typeof record) != 'object') return;
+
+    if (!record['sequence_id']) {
+        if (record['_id']['$oid']) record['sequence_id'] = record['_id']['$oid'];
+        else record['sequence_id'] = record['_id'];
+    }
+
+    // gene calls, join back to string
+    let fields = ['v_call', 'v_gene', 'v_subgroup', 'd_call', 'd_gene', 'd_subgroup', 'j_call', 'j_gene', 'j_subgroup', 'c_call', 'c_gene', 'c_subgroup']
+    for (let i in fields) {
+        let f = fields[i];
+        if ((typeof record[f]) == "object") record[f] = record[f].join(',');
+    }
+//    if ((typeof record['v_call']) == "object") record['v_call'] = record['v_call'].join(',');
+//    if ((typeof record['d_call']) == "object") record['d_call'] = record['d_call'].join(',');
+//    if ((typeof record['j_call']) == "object") record['j_call'] = record['j_call'].join(',');
+//    if ((typeof record['c_call']) == "object") record['c_call'] = record['c_call'].join(',');
+
+    // TODO: general this a bit in case we add more
+    if (record['_id']) delete record['_id'];
+    if (record['_etag']) delete record['_etag'];
+    if (record['vdjserver_junction_suffixes'])
+        if (!projection || projection['vdjserver_junction_suffixes'] == undefined)
+            delete record['vdjserver_junction_suffixes'];
+
+    // add any missing required fields
+    if (tapisIO.schema) {
+        if (all_fields.length > 0) {
+            tapisIO.schema.addFields(record, all_fields, airr_schema);
+        }
+    }
+
+    // apply projection
+    if (projection) {
+        var keys = Object.keys(record);
+        if (Object.keys(projection).length > 0) {
+            for (var p = 0; p < keys.length; ++p)
+                if (projection[keys[p]] == undefined)
+                    delete record[keys[p]];
+        }
+    }
+
+    return record;
+}
+
+ADCMongoQuery.endpoint_map = {
+    "rearrangement": rearrangement.cleanRecord,
+    "repertoire": repertoire.cleanRecord
+};
 
 
 // Construct mongodb query based upon the ADC filters parameters. The
@@ -84,6 +154,13 @@ ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, ch
         if (content_properties) content_type = content_properties['type'];
         if (!content_properties) {
             config.log.info(context, content['field'] + ' is not found in AIRR schema.');
+
+            // TODO: avoid symbols?
+            var symbols = /${}/;
+            if (symbols.test(content['field'])) {
+                error['message'] = 'field name contains invalid symbols: ' + content['field'];
+                config.log.error(context, 'HACK? field name contains invalid symbols: ' + content['field']);
+            }
         } else content_type = content_properties['type'];
 
         // Check if query field is required. By default, the ADC API can reject
