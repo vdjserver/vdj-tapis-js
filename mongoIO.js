@@ -801,7 +801,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
 
         writable.on('finish', function() {
             config.log.info(context, 'finish of write stream');
-            //return resolve(filename);
+            return resolve(cnt);
         });
 
                 // process the stream
@@ -856,22 +856,25 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
     
                 // write data
                 switch (format) {
-                    case 'tsv':
+                    case 'tsv': {
+                        // write headers
                         if (first) {
                             writable.write(headers.join('\t'));
                             writable.write('\n');
-                        } else {
-                            let vals = [];
-                            for (let i = 0; i < headers.length; ++i) {
-                                let p = headers[i];
-                                //if (config.debug) console.log(p, entry[p]);
-                                if (entry[p] == undefined) vals.push('');
-                                else vals.push(entry[p]);
-                            }
-                            writable.write(vals.join('\t'));
-                            writable.write('\n');
                         }
+
+                        // write row
+                        let vals = [];
+                        for (let i = 0; i < headers.length; ++i) {
+                            let p = headers[i];
+                            //if (config.debug) console.log(p, entry[p]);
+                            if (entry[p] == undefined) vals.push('');
+                            else vals.push(entry[p]);
+                        }
+                        writable.write(vals.join('\t'));
+                        writable.write('\n');
                         break;
+                    }
                     case 'jsonarray':
                         break;
                     case 'json':
@@ -890,7 +893,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
             if (format == 'json') writable.write(']}\n');
             else writable.write('\n');
             writable.end();
-            return resolve(cnt);
+            //return resolve(cnt);
         });
     });
 }
