@@ -46,7 +46,7 @@ pgSettings.set_config = function(config) {
         pgSettings.config = config;
     }
 
-    config.log.info(context, 'Using DB: ' + mongoSettings.dbname);
+    config.log.info(context, 'Using DB: ' + pgSettings.dbname);
     
     if (pgSettings.username) {
         pgSettings.url = 'postgres://'
