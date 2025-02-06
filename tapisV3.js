@@ -239,6 +239,64 @@ tapisV3.sendNotification = function(notification, data) {
 //
 /////////////////////////////////////////////////////////////////////
 //
+// Apps
+//
+tapisV3.getApps = function() {
+    //if (tapisSettings.shouldInjectError("tapisIO.getApplication")) return tapisSettings.performInjectError();
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/apps/?select=allAttributes',
+                method: 'GET',
+                headers: {
+                    'Accept':   'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
+        })
+}
+
+tapisV3.getApplication = function(name, version) {
+    //if (tapisSettings.shouldInjectError("tapisIO.getApplication")) return tapisSettings.performInjectError();
+
+    if (!name) return Promise.reject(new Error('name cannot be null.'));
+    if (!version) return Promise.reject(new Error('version cannot be null.'));
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/apps/' + name + '/' + version +'?select=allAttributes',
+                method: 'GET',
+                headers: {
+                    'Accept':   'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
+        })
+}
+
+//
+/////////////////////////////////////////////////////////////////////
+//
 // generic Tapis V3 meta operations
 //
 
@@ -1376,6 +1434,30 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
 //
 // Project File operations
 //
+
+tapisV3.grantStorageSystemPermissions = function(username) {
+
+    var postData = {
+        'permissions': ['READ']
+    };
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/systems/perms/' + tapisSettings.storageSystem + '/user/' + username,
+                method: 'POST',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
 
 tapisV3.createProjectDirectory = function(directory) {
 
