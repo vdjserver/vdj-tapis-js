@@ -823,9 +823,9 @@ tapisV3.performMultiUserQuery = function(username, collection, query, projection
     // modify query to add user permission
     var new_query = query;
     if (username != tapisSettings.serviceAccountKey) {
-        let key = "permission." + username + ".write";
-        let perm = {};
-        perm[key] = true;
+        // if there is a permission entry for user then we assume has write access
+        // as we do not support fine-grained permissions
+        let perm = { "permission.username": username };
         new_query = { "$and": [ query, perm ] };
     }
 
@@ -957,9 +957,9 @@ tapisV3.createProjectMetadata = async function(username, project) {
         lastUpdated: date,
         name: 'private_project',
         value: project,
-        permission: {}
+        permission: []
     };
-    postData['permission'][username] = { read: true, write: true };
+    postData['permission'].push({ username: username, permission: { read: true, write: true }});
 
     // validate
     if (tapisV3.schema) {
@@ -1207,11 +1207,13 @@ tapisV3.addProjectPermissionForUser = async function(project_uuid, username) {
 
     // check that username has not already been added with write access
     var found = false;
-    if (metadata['permission'][username] && metadata['permission'][username]['write']) found = true;
+    for (let i in metadata['permission']) {
+        if (metadata['permission'][i]['username'] == username) found = true;
+    }
     if (found) return Promise.resolve(metadata);
 
     // add and save
-    metadata['permission'][username] = { read: true, write: true };
+    metadata['permission'].push({ username: username, permission: { read: true, write: true }});
     metadata['lastUpdated'] = new Date().toISOString();
 
     // validate
@@ -1263,10 +1265,12 @@ tapisV3.removeProjectPermissionForUser = async function(project_uuid, username) 
 
     // new permission list without user
     var found = false;
-    var new_permissions = metadata['permission'];
-    if (metadata['permission'][username]) {
-        found = true;
-        delete new_permissions[username];
+    var new_permissions = [];
+    for (let i in metadata['permission']) {
+        if (metadata['permission'][i]['username'] == username)
+            found = true;
+        else
+            new_permissions.push(metadata['permission'][i]);
     }
     // no need to update if username was not in the list
     if (!found) return Promise.resolve(metadata);
