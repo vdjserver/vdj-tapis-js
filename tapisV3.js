@@ -1686,6 +1686,66 @@ tapisV3.getUserProfile = function(username) {
     return tapisV3.performServiceQuery('tapis_meta', filter);
 };
 
+tapisV3.getAllUsernames = async function() {
+    /*
+    Returns an array of all users by username.
+
+    Returns
+    -------
+    users : array
+        Array of all usernames found in tapis_meta.
+    */
+    
+    //if (tapisSettings.shouldInjectError("tapisV3.getUserProfile")) return tapisSettings.performInjectError();
+
+    var filter = {"name": "profile"};
+    var profiles =  await tapisV3.performServiceQuery('tapis_meta', filter);
+    let users = profiles.map(item => item.value.username);
+    return users;
+    // put map in user controller
+    //return profiles.map(tapisV3.performMultiServiceQuery('tapis_meta', filter) => item.value.username)
+};
+
+tapisV3.getSomeUsernames = async function(str) {
+    /*
+    When called, all usernames are grabbed and sorted. Start
+    of username is compared to str. If users are found to start with 
+    str, then selected as potentialUsers and returned.
+
+    Parameters
+    ----------
+    str : string
+        String to search beginning of username.
+
+    Returns
+    -------
+    potentialUsers : array
+        Up to nUsers of usernames that start with str.
+    */
+    let users = await this.getAllUsernames();
+    let usersValues = Object.values(users).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    // return usersValues;
+    let potentialUsers = [];
+
+    for(let i=0; i<usersValues.length; i++) {
+        if(usersValues[i]===undefined) {
+            break;
+        }
+
+        // skip user if str is longer than username
+        if(str.length > usersValues[i].length) {
+            continue;
+        } else {
+            // compare str to start of username
+            if(str==usersValues[i].substring(0,str.length)) {
+                potentialUsers.push(usersValues[i]);
+            }
+        }
+    }
+    return potentialUsers;
+
+}
+
 tapisV3.createUserProfile = function(user, username) {
     //if (tapisSettings.shouldInjectError("tapisIO.createUserProfile")) return tapisSettings.performInjectError();
 
