@@ -1686,6 +1686,22 @@ tapisV3.getUserProfile = function(username) {
     return tapisV3.performServiceQuery('tapis_meta', filter);
 };
 
+tapisV3.getAllUserProfiles = async function() {
+    /*
+    Returns an array of all users by username.
+
+    Returns
+    -------
+    users : array
+        Array of all profiles found in tapis_meta.
+    */
+    
+    //if (tapisSettings.shouldInjectError("tapisV3.getUserProfile")) return tapisSettings.performInjectError();
+
+    var filter = {"name": "profile"};
+    return await tapisV3.performServiceQuery('tapis_meta', filter);
+};
+
 tapisV3.createUserProfile = function(user, username) {
     //if (tapisSettings.shouldInjectError("tapisIO.createUserProfile")) return tapisSettings.performInjectError();
 
