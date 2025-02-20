@@ -193,7 +193,7 @@ mongoIO.performAggregation = async function(collection_name, agg) {
         MongoClient.connect(mongoSettings.url, async function(err, db) {
             if (err) return reject(new Error('Could not connect to database.'));
 
-            config.log.info(context, "Connected successfully to mongodb");
+            config.log.info(context, "Connected successfully to mongodb, timeout set to: " + mongoSettings.queryTimeout);
 
             var v1airr = db.db(mongoSettings.dbname);
             var collection = v1airr.collection(collection_name);
