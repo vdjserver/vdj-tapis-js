@@ -166,7 +166,7 @@ mongoIO.performQuery = async function(collection_name, query, from, size, projec
             var collection = v1airr.collection(collection_name);
 
             // perform a normal query
-            var cursor = collection.find(query);
+            var cursor = collection.find(query).maxTimeMS(mongoSettings.queryTimeout);
             if (from) cursor.skip(from);
             if (size) cursor.limit(size);
             if (projection) cursor.project(projection);
@@ -199,13 +199,13 @@ mongoIO.performAggregation = async function(collection_name, agg) {
             var collection = v1airr.collection(collection_name);
 
             // perform a facets aggregation query
-            var records = await collection.aggregate(agg).toArray()
+            var records = await collection.aggregate(agg).maxTimeMS(mongoSettings.queryTimeout).toArray()
                 .catch(function(error) {
                     db.close();
                     return reject(new Error('Error performing aggregation: ' + error));
                 });
 
-            config.log.info(context, 'Retrieve ' + records.length + ' records.');
+            if (records) config.log.info(context, 'Retrieve ' + records.length + ' records.');
 
             db.close();
             return resolve(records);

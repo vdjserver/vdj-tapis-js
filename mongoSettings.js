@@ -35,6 +35,7 @@ var mongoSettings = {
     userSecret: process.env.MONGODB_SECRET,
     queryCollection: process.env.MONGODB_QUERY_COLLECTION,
     loadCollection: process.env.MONGODB_LOAD_COLLECTION,
+    queryTimeout: process.env.MONGODB_QUERY_TIMEOUT,
     url: null
 };
 
