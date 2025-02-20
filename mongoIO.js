@@ -199,7 +199,7 @@ mongoIO.performAggregation = async function(collection_name, agg) {
             var collection = v1airr.collection(collection_name);
 
             // perform a facets aggregation query
-            var records = await collection.aggregate(agg).maxTimeMS(mongoSettings.queryTimeout).toArray()
+            var records = await collection.aggregate(agg).maxTimeMS(3 * mongoSettings.queryTimeout).toArray()
                 .catch(function(error) {
                     db.close();
                     return reject(new Error('Error performing aggregation: ' + error));
