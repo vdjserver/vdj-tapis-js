@@ -408,6 +408,13 @@ tapisV3.createDocument = function(name, value, associationIds, owner, extras, sk
         });
 };
 
+// get a document by its uuid
+tapisV3.getDocument = function(doc_uuid) {
+
+    var filter = { "uuid": doc_uuid };
+    return tapisV3.performServiceQuery('tapis_meta', filter);
+};
+
 // raw record replacement
 tapisV3.updateRecord = function(collection, doc_id, data) {
     //if (tapisSettings.shouldInjectError("tapisIO.updateRecord")) return tapisSettings.performInjectError();
@@ -2042,15 +2049,16 @@ tapisV3.createCachedRepertoireMetadata = function(repository_id, study_id, reper
 };
 
 // get list of repertoire cache entries
-tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire_id, should_cache, not_cached, max_limit) {
+tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire_id, should_cache, is_cached, max_limit) {
 
-    var query = '{"name":"adc_cache_repertoire"';
-    if (repository_id) query += ',"value.repository_id":"' + repository_id + '"';
-    if (study_id) query += ',"value.study_id":"' + study_id + '"';
-    if (repertoire_id) query += ',"value.repertoire_id":"' + repertoire_id + '"';
-    if (should_cache) query += ',"value.should_cache":true';
-    if (not_cached) query += ',"value.is_cached":false';
-    query += '}';
+    var query = { "name": "adc_cache_repertoire" };
+    if (repository_id) query["value.repository_id"] = repository_id;
+    if (study_id) query["value.study_id"] = study_id;
+    if (repertoire_id) query["value.repertoire_id"] = repertoire_id;
+    if (should_cache === false) query["value.should_cache"] = false;
+    else if (should_cache === true) query["value.should_cache"] = true;
+    if (is_cached === false) query["value.is_cached"] = false;
+    else if (is_cached === true) query["value.is_cached"] = true;
 
     var limit = 50;
     if (max_limit) {
@@ -2063,6 +2071,7 @@ tapisV3.getRepertoireCacheEntries = function(repository_id, study_id, repertoire
     return tapisV3.performMultiServiceQuery('tapis_meta', query);
 };
 
+// create public postit
 tapisV3.createADCDownloadCachePostit = function(cache_uuid, obj) {
 
     var postData = {
@@ -2082,8 +2091,15 @@ tapisV3.createADCDownloadCachePostit = function(cache_uuid, obj) {
                     'X-Tapis-Token': ServiceAccount.accessToken()
                 }
             };
+            //console.log(requestSettings);
 
-            return tapisV3.sendRequest(requestSettings);
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
         });
 };
 
