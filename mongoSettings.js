@@ -52,6 +52,7 @@ mongoSettings.set_config = function(config) {
     config.log.info(context, 'Using DB: ' + mongoSettings.dbname);
     config.log.info(context, 'Using query collection: ' + mongoSettings.queryCollection);
     config.log.info(context, 'Using load collection: ' + mongoSettings.loadCollection);
+    config.log.info(context, 'Using DB timeout: ' + mongoSettings.queryTimeout);
     
     if (mongoSettings.username) {
         mongoSettings.url = 'mongodb://'
