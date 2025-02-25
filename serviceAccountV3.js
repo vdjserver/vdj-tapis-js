@@ -43,28 +43,21 @@ ServiceAccountV3.getToken = function() {
 
     var that = this;
 
-    // TODO: simple expire hack, we should use Tapis instead
-    /*
-    if (this.tapisToken) {
-        if (!this.created) {
-            this.created = new Date();
-        } else {
-            let now = new Date();
-            let diffMs = (now - this.created);
-            if (diffMs < 36000000) return Promise.resolve(this.tapisToken); // 1 hour
-        }
-    } */
-
-    return tapisV3.getToken(this)
-        .then(function(responseObject) {
-            that.tapisToken = new TapisTokenV3(responseObject.access_token);
-            that.created = new Date();
-            return Promise.resolve(that.tapisToken);
-        })
-        .catch(function(errorObject) {
-            console.error('TAPIS-V3-API ERROR: Unable to login with service account. ' + errorObject);
-            return Promise.reject(errorObject);
-        });
+    if (tapisSettings.serviceAccountJWT) {
+        // if long-lived token is provided, use that
+        that.tapisToken = { "access_token": tapisSettings.serviceAccountJWT };
+        return Promise.resolve(that.tapisToken);
+    } else {
+        return tapisV3.getToken(this)
+            .then(function(responseObject) {
+                that.tapisToken = new TapisTokenV3(responseObject.access_token);
+                return Promise.resolve(that.tapisToken);
+            })
+            .catch(function(errorObject) {
+                console.error('TAPIS-V3-API ERROR: Unable to login with service account. ' + errorObject);
+                return Promise.reject(errorObject);
+            });
+    }
 }
 
 ServiceAccountV3.accessToken = function() {
