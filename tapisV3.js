@@ -1810,6 +1810,14 @@ tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
         });
 };
 
+/////////////////////////////////////////////////////////////////////
+//
+// Project jobs
+//
+tapisV3.getJobsForProject = function(projectUuid) {
+    return Promise.resolve([]);
+}
+
 //
 /////////////////////////////////////////////////////////////////////
 //
