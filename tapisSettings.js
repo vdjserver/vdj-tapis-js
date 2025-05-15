@@ -54,6 +54,7 @@ var tapisSettings = {
     // VDJ Guest Account User
     guestAccountKey: process.env.VDJ_GUEST_ACCOUNT,
     guestAccountSecret: process.env.VDJ_GUEST_ACCOUNT_SECRET,
+    guestAccountJWT: process.env.VDJ_GUEST_ACCOUNT_JWT,
 
     // VDJ Backbone Location
     vdjBackbone: process.env.VDJ_BACKBONE_HOST,

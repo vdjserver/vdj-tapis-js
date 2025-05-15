@@ -43,15 +43,21 @@ GuestAccountV3.getToken = function() {
 
     var that = this;
 
-    return tapisV3.getToken(this)
-        .then(function(responseObject) {
-            that.tapisToken = new TapisTokenV3(responseObject.access_token);
-            return Promise.resolve(that.tapisToken);
-        })
-        .catch(function(errorObject) {
-            console.error('TAPIS-API ERROR: Unable to login with guest account. ' + errorObject);
-            return Promise.reject(errorObject);
-        });
+    if (tapisSettings.guestAccountJWT) {
+        // if long-lived token is provided, use that
+        that.tapisToken = { "access_token": tapisSettings.guestAccountJWT };
+        return Promise.resolve(that.tapisToken);
+    } else {
+	return tapisV3.getToken(this)
+            .then(function(responseObject) {
+		that.tapisToken = new TapisTokenV3(responseObject.access_token);
+		return Promise.resolve(that.tapisToken);
+            })
+            .catch(function(errorObject) {
+		console.error('TAPIS-API ERROR: Unable to login with guest account. ' + errorObject);
+		return Promise.reject(errorObject);
+            });
+    }
 }
 
 GuestAccountV3.accessToken = function() {
