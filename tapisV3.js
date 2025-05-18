@@ -1930,6 +1930,30 @@ tapisV3.getRearrangementsToBeLoaded = function(projectUuid, collection) {
 // AIRR Data Commons functions
 //
 
+tapisV3.createCommunityCacheDirectory = function(study_cache_uuid) {
+
+    var postData = { path: '/community/cache/' + study_cache_uuid };
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/ops/' + tapisSettings.storageSystem,
+                method: 'POST',
+                data: JSON.stringify(postData),
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            //console.log(requestSettings);
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
 // facets aggregation query
 tapisV3.performFacets = function(collection, query, field, start_page, pagesize) {
     var context = 'tapisV3.performFacets';
@@ -1999,24 +2023,19 @@ tapisV3.getADCDownloadCache = function() {
 // create metadata entry for cached ADC study
 tapisV3.createCachedStudyMetadata = function(repository_id, study_id, should_cache) {
 
-    return Promise.reject('tapisV3.createCachedStudyMetadata: Not implemented.')
-/*
-    var postData = {
-        name: 'adc_cache_study',
-        value: {
-            repository_id: repository_id,
-            study_id: study_id,
-            should_cache: should_cache,
-            is_cached: false,
-            archive_file: null,
-            download_url: null
-        }
-    };
+    var meta_name = 'adc_cache_study';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
 
-    postData = JSON.stringify(postData);
-
-    return tapisV3.createRecord('tapis_meta', postData); */
-
+        let obj = s.template();
+        obj['value']['repository_id'] = repository_id;
+        obj['value']['study_id'] = study_id;
+        obj['value']['should_cache'] = should_cache;
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
 };
 
 // get list of studies cache entries
@@ -2036,24 +2055,20 @@ tapisV3.getStudyCacheEntries = function(repository_id, study_id, should_cache, i
 // create metadata entry for cached ADC rearrangements for a single repertoire
 tapisV3.createCachedRepertoireMetadata = function(repository_id, study_id, repertoire_id, should_cache) {
 
-    return Promise.reject('tapisV3.createCachedRepertoireMetadata: Not implemented.')
-/*
-    var postData = {
-        name: 'adc_cache_repertoire',
-        value: {
-            repository_id: repository_id,
-            study_id: study_id,
-            repertoire_id: repertoire_id,
-            should_cache: should_cache,
-            is_cached: false,
-            archive_file: null,
-            download_url: null
-        }
-    };
+    var meta_name = 'adc_cache_repertoire';
+    if (tapisV3.schema) {
+        let s = tapisV3.schema.spec_for_tapis_name(meta_name);
+        if (!s) return Promise.reject('Cannot find spec with tapis name: ' + meta_name);
 
-    postData = JSON.stringify(postData);
-
-    return tapisV3.createRecord('tapis_meta', postData); */
+        let obj = s.template();
+        obj['value']['repository_id'] = repository_id;
+        obj['value']['study_id'] = study_id;
+        obj['value']['repertoire_id'] = repertoire_id;
+        obj['value']['should_cache'] = should_cache;
+        return tapisV3.createDocument(meta_name, obj['value']);
+    } else {
+        return Promise.reject('Schema is not defined for Tapis V3.')
+    }
 };
 
 // get list of repertoire cache entries
