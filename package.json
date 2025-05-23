@@ -1,7 +1,7 @@
 {
-  "name": "tapis-js",
-  "version": "0.1.0",
-  "description": "VDJServer Tapis",
+  "name": "vdj-tapis-js",
+  "version": "0.4.0",
+  "description": "VDJServer wrapper for Tapis API",
   "author": [
     {
       "name": "VDJServer",
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://bitbucket.org/vdjserver/tapis-js"
+    "url": "https://github.com/vdjserver/vdj-tapis-js"
   },
   "license": "GNU AGPL V3",
   "main": "tapis.js",
