@@ -30,7 +30,6 @@ module.exports = tapisIO;
 
 // Node Libraries
 var _ = require('underscore');
-var jsonApprover = require('json-approver');
 var FormData = require('form-data');
 const axios = require('axios');
 
@@ -48,6 +47,23 @@ var MetadataPermissions = require('./metadataPermissions');
 // Controller
 var authController = require('./authController');
 tapisIO.authController = authController;
+
+// check if valid JSON
+var isJSON = function(data) {
+
+    var isValid = false;
+
+    try {
+        var parsedData = JSON.parse(data);
+
+        if (parsedData && typeof parsedData === 'object' && parsedData !== null) {
+            isValid = true;
+        }
+    }
+    catch (e) { isValid = false; }
+
+    return isValid;
+}
 
 //
 // Generic send request
@@ -67,7 +83,7 @@ tapisIO.sendRequest = function(requestSettings, postData, allow404, trap408) {
 
                 var responseObject = null;
 
-                if (output && jsonApprover.isJSON(output))
+                if (output && isJSON(output))
                     responseObject = JSON.parse(output);
 
                 // reject on errors
@@ -87,7 +103,7 @@ tapisIO.sendRequest = function(requestSettings, postData, allow404, trap408) {
                 // process output
                 if (output.length == 0) return resolve(null);
 
-                if (jsonApprover.isJSON(output)) {
+                if (isJSON(output)) {
                     return resolve(responseObject);
                 } else {
                     console.error('TAPIS-API ERROR: Tapis response is not json: ' + output);
@@ -126,7 +142,7 @@ tapisIO.sendFormRequest = function(requestSettings, formData) {
 
                 var responseObject;
 
-                if (output && jsonApprover.isJSON(output)) {
+                if (output && isJSON(output)) {
                     responseObject = JSON.parse(output);
                 }
                 else {
@@ -164,7 +180,7 @@ tapisIO.sendTokenRequest = function(requestSettings, postData) {
 
                 var responseObject;
 
-                if (output && jsonApprover.isJSON(output)) {
+                if (output && isJSON(output)) {
                     responseObject = JSON.parse(output);
                 } else {
                     console.error('TAPIS-API ERROR: Tapis response is not json: ' + output);
