@@ -35,7 +35,7 @@ module.exports = AuthController;
 var tapisIO = require('./tapisV3');
 var tapisSettings = tapisIO.tapisSettings;
 var ServiceAccount = tapisIO.serviceAccount;
-var config = tapisIO.config;
+var config = tapisSettings.config;
 var webhookIO = require('./webhookIO');
 
 // Extract token from header
