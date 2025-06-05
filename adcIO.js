@@ -46,9 +46,25 @@ var _ = require('underscore');
 var csv = require('csv-parser');
 var fs = require('fs');
 const zlib = require('zlib');
-var jsonApprover = require('json-approver');
 const axios = require('axios');
 
+
+// check if valid JSON
+var isJSON = function(data) {
+
+    var isValid = false;
+
+    try {
+        var parsedData = JSON.parse(data);
+
+        if (parsedData && typeof parsedData === 'object' && parsedData !== null) {
+            isValid = true;
+        }
+    }
+    catch (e) { isValid = false; }
+
+    return isValid;
+}
 
 //
 // Generic send request
@@ -69,7 +85,7 @@ adcIO.sendRequest = function(requestSettings, postData) {
                 var responseObject;
                 //console.log(output);
 
-                if (output && jsonApprover.isJSON(output)) {
+                if (output && isJSON(output)) {
                     responseObject = JSON.parse(output);
                 }
                 else {

@@ -30,7 +30,6 @@ module.exports = tapisV3;
 
 // Node Libraries
 var _ = require('underscore');
-var jsonApprover = require('json-approver');
 var FormData = require('form-data');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
