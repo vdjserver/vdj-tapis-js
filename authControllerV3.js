@@ -135,6 +135,8 @@ AuthController.adminAuthorization = function(req, scopes, definition) {
 
             if (req['user']['username'] == tapisSettings.serviceAccountKey) {
                 // valid
+                config.log.info(context, 'admin access by authorized user: ' + req['user']['username']
+                    + ', route: ' + JSON.stringify(req.route.path), true);
                 return true;
             }
             else {
