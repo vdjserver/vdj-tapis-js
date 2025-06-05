@@ -997,16 +997,6 @@ tapisV3.getProjectMetadata = function(username, project_uuid) {
     return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
 };
 
-// get public projects for a user
-// or single public project given uuid
-tapisV3.getPublicProjectMetadata = function(username, project_uuid) {
-    //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
-
-    var filter = { "name": "public_project" };
-    if (project_uuid) filter['uuid'] = project_uuid;
-    return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
-};
-
 // get any/all public projects
 // or single public project given uuid
 tapisV3.getAnyPublicProjectMetadata = function(project_uuid) {
@@ -1823,6 +1813,16 @@ tapisV3.getJobsForProject = function(projectUuid) {
 //
 // Project load/unload from VDJServer ADC data repository
 //
+
+// get public projects
+// or single public project given uuid
+tapisV3.getPublicProjectMetadata = function(project_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
+
+    var filter = { "name": "public_project" };
+    if (project_uuid) filter['uuid'] = project_uuid;
+    return tapisV3.performMultiServiceQuery('tapis_meta', filter);
+};
 
 //
 // Right now, all the project load/unload metadata is owned by the
