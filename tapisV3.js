@@ -1812,10 +1812,64 @@ tapisV3.createFeedbackMetadata = async function(feedback, username, email) {
 
 /////////////////////////////////////////////////////////////////////
 //
-// Project jobs
+// Project analyses and tapis jobs
 //
-tapisV3.getJobsForProject = function(projectUuid) {
-    return Promise.resolve([]);
+
+tapisV3.getAnalysisDocuments = function(status) {
+    var filter = {
+        "name": "analysis_document"
+    };
+    if (status) filter["value.status"] = status;
+    return tapisV3.performServiceQuery('tapis_meta', filter);
+}
+
+tapisV3.getTapisJob = function(job_id) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/jobs/' + job_id,
+                method: 'GET',
+                headers: {
+                    'Accept':   'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
+        })
+}
+
+tapisV3.submitTapisJob = function(job_data) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/jobs/submit',
+                method: 'POST',
+                data: JSON.stringify(job_data),
+                headers: {
+                    'Accept':   'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken(),
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+                .then(function(responseObject) {
+                    return Promise.resolve(responseObject.result);
+                })
+                .catch(function(errorObject) {
+                    return Promise.reject(errorObject);
+                });
+        })
 }
 
 //
