@@ -35,7 +35,7 @@ module.exports = AuthController;
 var tapisIO = require('./tapisV3');
 var tapisSettings = tapisIO.tapisSettings;
 var ServiceAccount = tapisIO.serviceAccount;
-var config = tapisIO.config;
+var config = tapisSettings.config;
 var webhookIO = require('./webhookIO');
 
 // Extract token from header
@@ -135,6 +135,8 @@ AuthController.adminAuthorization = function(req, scopes, definition) {
 
             if (req['user']['username'] == tapisSettings.serviceAccountKey) {
                 // valid
+                config.log.info(context, 'admin access by authorized user: ' + req['user']['username']
+                    + ', route: ' + JSON.stringify(req.route.path), true);
                 return true;
             }
             else {
