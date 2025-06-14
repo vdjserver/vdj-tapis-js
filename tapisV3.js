@@ -988,10 +988,11 @@ tapisV3.createProjectMetadata = async function(username, project) {
 
 // get private projects for a user
 // or single project given uuid
-tapisV3.getProjectMetadata = function(username, project_uuid) {
+tapisV3.getProjectMetadata = function(username, project_uuid, archived_only) {
     //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
 
     var filter = { "name": "private_project" };
+    if (archived_only) filter = { "name": "archived_project" };
     if (project_uuid) filter['uuid'] = project_uuid;
     return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
 };
