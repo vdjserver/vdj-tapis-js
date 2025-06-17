@@ -94,20 +94,23 @@ AuthController.userAuthorization = function(req, scopes, definition) {
             // service account does not need the verification record
             if (req['user']['username'] == tapisSettings.serviceAccountKey) return true;
 
-            // now check that the user account has been verified
-            return tapisIO.getUserVerificationMetadata(req['user']['username'])
-                .then(function(userVerificationMetadata) {
-                    if (userVerificationMetadata && userVerificationMetadata[0] && userVerificationMetadata[0].value.isVerified === true) {
-                        // valid
-                        return true;
-                    }
-                    else {
-                        var msg = 'access by unverified user: ' + req['user']['username'];
-                        msg = config.log.error(context, msg);
-                        webhookIO.postToSlack(msg);
-                        return false;
-                    }
-                });
+            // TODO: user verification needs to be re-worked
+            return true;
+
+//             // now check that the user account has been verified
+//             return tapisIO.getUserVerificationMetadata(req['user']['username'])
+//                 .then(function(userVerificationMetadata) {
+//                     if (userVerificationMetadata && userVerificationMetadata[0] && userVerificationMetadata[0].value.isVerified === true) {
+//                         // valid
+//                         return true;
+//                     }
+//                     else {
+//                         var msg = 'access by unverified user: ' + req['user']['username'];
+//                         msg = config.log.error(context, msg);
+//                         webhookIO.postToSlack(msg);
+//                         return false;
+//                     }
+//                 });
         })
         .catch(function(error) {
             var msg = 'invalid token: ' + token + ', error: ' + error;
