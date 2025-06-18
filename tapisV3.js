@@ -997,6 +997,14 @@ tapisV3.getProjectMetadata = function(username, project_uuid, archived_only) {
     return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
 };
 
+tapisV3.getPublicProjectMetadata = function(username, project_uuid) {
+    //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
+
+    var filter = { "name": "public_project" };
+    if (project_uuid) filter['uuid'] = project_uuid;
+    return tapisV3.performMultiUserQuery(username, 'tapis_meta', filter);
+};
+
 // get any/all public projects
 // or single public project given uuid
 tapisV3.getAnyPublicProjectMetadata = function(project_uuid) {
@@ -1870,7 +1878,7 @@ tapisV3.submitTapisJob = function(job_data) {
 
 // get public projects
 // or single public project given uuid
-tapisV3.getPublicProjectMetadata = function(project_uuid) {
+tapisV3.getAllPublicProjectMetadata = function(project_uuid) {
     //if (tapisSettings.shouldInjectError("tapisV3.getProjectMetadata")) return tapisSettings.performInjectError();
 
     var filter = { "name": "public_project" };
