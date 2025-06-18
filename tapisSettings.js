@@ -95,13 +95,15 @@ tapisSettings.get_default_tapis = function(config) {
         tapisSettings.config = config;
     }
 
-    if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
-    else if (tapisSettings.tapis_version == 3) {
-        tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
-        if (tapisSettings.serviceAccountJWT) tapisSettings.config.log.info(context, 'Service account using long-lived token.', true);
-    } else {
-        tapisSettings.config.log.error(context, 'Invalid Tapis version, check TAPIS_VERSION environment variable');
-        return null;
+    if (tapisSettings.config) {
+        if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
+        else if (tapisSettings.tapis_version == 3) {
+            tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
+            if (tapisSettings.serviceAccountJWT) tapisSettings.config.log.info(context, 'Service account using long-lived token.', true);
+        } else {
+            tapisSettings.config.log.error(context, 'Invalid Tapis version, check TAPIS_VERSION environment variable');
+            return null;
+        }
     }
 
     var tapisV2 = require('vdj-tapis-js/tapis');

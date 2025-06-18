@@ -32,10 +32,10 @@ var AuthController = {};
 module.exports = AuthController;
 
 // Processing
-var tapisIO = require('./tapisV3');
-var tapisSettings = tapisIO.tapisSettings;
-var ServiceAccount = tapisIO.serviceAccount;
+var tapisSettings = require('./tapisSettings');
+var tapisIO = tapisSettings.get_default_tapis();
 var config = tapisSettings.config;
+var ServiceAccount = tapisIO.serviceAccount;
 var webhookIO = require('./webhookIO');
 
 // Extract token from header
@@ -185,14 +185,14 @@ AuthController.projectAuthorization = function(req, scopes, definition) {
             if (!result) return result;
 
             // verify the user has access to project
-            return tapisIO.getProjectMetadata(req['user']['username'], project_uuid);
+            return tapisIO.getAllProjectMetadata(req['user']['username'], project_uuid);
         })
         .then(function(projectMetadata) {
             //config.log.info(context, JSON.stringify(projectMetadata));
 
             // make sure its project metadata and not some random uuid
             // TODO: should disallow old VDJServer V1 projects at some point
-            if (projectMetadata && (projectMetadata.length == 1) && ((projectMetadata[0].name == 'private_project') || (projectMetadata[0].name == 'public_project') || (projectMetadata[0].name == 'project') || (projectMetadata[0].name == 'archive_project'))) {
+            if (projectMetadata && (projectMetadata.length == 1) && ((projectMetadata[0].name == 'private_project') || (projectMetadata[0].name == 'public_project') || (projectMetadata[0].name == 'project') || (projectMetadata[0].name == 'archived_project'))) {
                 // save the project metadata
                 req['project_metadata'] = projectMetadata[0];
                 return true;
