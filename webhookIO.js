@@ -26,31 +26,44 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-var moment = require('moment-timezone');
-var request = require('request');
-
 var webhookIO = {};
 module.exports = webhookIO;
 
-webhookIO.environment = 'VDJServer TAPIS API';
+var tapisSettings = require('./tapisSettings');
+var tapisIO = tapisSettings.get_default_tapis();
+var config = tapisSettings.config;
 
-webhookIO.postToSlack = function(eventMessage) {
+var moment = require('moment-timezone');
+const axios = require('axios');
+
+webhookIO.postToSlack = async function(eventMessage) {
 
     if (!process.env.SLACK_WEBHOOK_URL) return;
 
-    request({
+    var postData = {
+        text: 'Event: ' + eventMessage + '\n'
+              + 'Environment: ' + tapisSettings.vdjBackbone + '\n'
+              + 'Timestamp: ' + moment().tz('America/Chicago').format()
+              ,
+        username: 'VDJ Telemetry Bot',
+    };
+
+    var requestSettings = {
         url: process.env.SLACK_WEBHOOK_URL,
-        json: {
-            text: 'Event: ' + eventMessage + '\n'
-                  + 'Environment: ' + webhookIO.environment + '\n'
-                  + 'Timestamp: ' + moment().tz('America/Chicago').format()
-                  ,
-            username: 'VDJ Telemetry Bot',
-        },
         method: 'POST',
-    },
-    function(requestError, response, body) {
-        console.log('Posted slack webhook for message: "' + eventMessage + '"');
-    })
-    ;
+        data: postData,
+        headers: {
+            'Content-Type':   'application/json'
+        }
+    };
+
+    var response = await axios(requestSettings)
+        .catch(function(error) {
+            var msg = 'Failed to send slack message: ' + JSON.stringify(error);
+            return Promise.reject(new Error(msg));
+        });
+
+    console.log('Posted slack webhook for message: "' + eventMessage + '"');
+
+    return Promise.resolve(response.data);
 };
