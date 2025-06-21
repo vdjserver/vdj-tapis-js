@@ -210,6 +210,40 @@ AuthController.projectAuthorization = function(req, scopes, definition) {
         });
 }
 
+// Write access to project
+AuthController.projectWriteAuthorization = async function(req, scopes, definition) {
+    const context = 'AuthController.projectWriteAuthorization';
+
+    // call default permission check
+    var result = await AuthController.projectAuthorization(req, scopes, definition);
+    if (!result) return result;
+
+    // archived_project and public_project should be excluded.
+    if (req['project_metadata']['name'] == 'archived_project') {
+        let msg = 'Archived projects cannot be modified. Unarchive the project first.';
+        msg = config.log.error(context, msg);
+        webhookIO.postToSlack(msg);
+        return false;
+    }
+    if (req['project_metadata']['name'] == 'public_project') {
+        let msg = 'Published (public) projects cannot be modified. Unpublish the project first.';
+        msg = config.log.error(context, msg);
+        webhookIO.postToSlack(msg);
+        return false;
+    }
+
+    // only private_project can be written
+    if (req['project_metadata']['name'] != 'private_project') {
+        let msg = 'Unknown project type: ' + req['project_metadata']['name'];
+        msg = config.log.error(context, msg);
+        webhookIO.postToSlack(msg);
+        return false;
+    }
+
+    // otherwise all good
+    return true;
+}
+
 //
 // verify a valid and active username account
 //
