@@ -244,6 +244,46 @@ AuthController.projectWriteAuthorization = async function(req, scopes, definitio
     return true;
 }
 
+// Unarchive access to project, as an archived_project does not allow write access
+AuthController.projectUnarchiveAuthorization = async function(req, scopes, definition) {
+    const context = 'AuthController.projectUnarchiveAuthorization';
+
+    // call default permission check
+    var result = await AuthController.projectAuthorization(req, scopes, definition);
+    if (!result) return result;
+
+    // only archived_project
+    if (req['project_metadata']['name'] == 'archived_project') {
+        // all good, any project user can unarchive
+        return true;
+    } else {
+        let msg = 'Unable to unarchive an invalid project type: ' + req['project_metadata']['name'];
+        msg = config.log.error(context, msg);
+        webhookIO.postToSlack(msg);
+        return false;
+    }
+}
+
+// Unpublish access to project, as a public_project does not allow write access
+AuthController.projectUnpublishAuthorization = async function(req, scopes, definition) {
+    const context = 'AuthController.projectUnpublishAuthorization';
+
+    // call default permission check
+    var result = await AuthController.projectAuthorization(req, scopes, definition);
+    if (!result) return result;
+
+    // only public_project
+    if (req['project_metadata']['name'] == 'public_project') {
+        // all good, any project user can unpublish
+        return true;
+    } else {
+        let msg = 'Unable to unpublish an invalid project type: ' + req['project_metadata']['name'];
+        msg = config.log.error(context, msg);
+        webhookIO.postToSlack(msg);
+        return false;
+    }
+}
+
 //
 // verify a valid and active username account
 //
