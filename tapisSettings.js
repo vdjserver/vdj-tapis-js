@@ -32,6 +32,16 @@ function parseBoolean(value)
     else return false;
 }
 
+function parseList(value)
+{
+    if (value) {
+        let names = value.split(',');
+        console.log(names);
+        return names;
+    }
+    return [];
+}
+
 var tapisSettings = {
     tapis_version: process.env.TAPIS_VERSION,
     config: null,
@@ -55,6 +65,9 @@ var tapisSettings = {
     guestAccountKey: process.env.VDJ_GUEST_ACCOUNT,
     guestAccountSecret: process.env.VDJ_GUEST_ACCOUNT_SECRET,
     guestAccountJWT: process.env.VDJ_GUEST_ACCOUNT_JWT,
+
+    // User admins
+    adminAccountKeys: parseList(process.env.VDJ_USER_ADMINS),
 
     // VDJ Backbone Location
     vdjBackbone: process.env.VDJ_BACKBONE_HOST,
@@ -102,7 +115,10 @@ tapisSettings.get_default_tapis = function(config) {
         if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
         else if (tapisSettings.tapis_version == 3) {
             tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
-            if (tapisSettings.serviceAccountJWT) tapisSettings.config.log.info(context, 'Service account using long-lived token.', true);
+            if (tapisSettings.serviceAccountJWT)
+                tapisSettings.config.log.info(context, 'Service account using long-lived token.', true);
+            if (tapisSettings.adminAccountKeys.length > 0)
+                tapisSettings.config.log.info(context, 'User admins accounts: ' + JSON.stringify(tapisSettings.adminAccountKeys), true);
         } else {
             tapisSettings.config.log.error(context, 'Invalid Tapis version, check TAPIS_VERSION environment variable');
             return null;

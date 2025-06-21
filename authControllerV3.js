@@ -138,11 +138,17 @@ AuthController.adminAuthorization = function(req, scopes, definition) {
 
             if (req['user']['username'] == tapisSettings.serviceAccountKey) {
                 // valid
-                config.log.info(context, 'admin access by authorized user: ' + req['user']['username']
+                config.log.info(context, 'admin access by service account: ' + req['user']['username']
                     + ', route: ' + JSON.stringify(req.route.path), true);
                 return true;
             }
-            else {
+            else if (tapisSettings.adminAccountKeys && tapisSettings.adminAccountKeys.length > 0
+                && tapisSettings.adminAccountKeys.indexOf(req['user']['username']) >= 0) {
+                // valid
+                config.log.info(context, 'admin access by authorized user: ' + req['user']['username']
+                    + ', route: ' + JSON.stringify(req.route.path), true);
+                return true;
+            } else {
                 var msg = 'access by unauthorized user: ' + req['user']['username']
                     + ', route: ' + JSON.stringify(req.route.path);
                 msg = config.log.error(context, msg);
