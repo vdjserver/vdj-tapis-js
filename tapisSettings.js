@@ -89,13 +89,16 @@ module.exports = tapisSettings;
 
 tapisSettings.get_default_tapis = function(config) {
     var context = 'tapis';
+    var config_provided = false;
 
     if (config) {
         config.log.info(context, 'config object set for app: ' + config.name);
         tapisSettings.config = config;
+        config_provided = true;
     }
 
-    if (tapisSettings.config) {
+    // only need to display once
+    if (tapisSettings.config && config_provided) {
         if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
         else if (tapisSettings.tapis_version == 3) {
             tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
