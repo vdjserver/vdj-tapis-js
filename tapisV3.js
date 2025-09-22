@@ -35,8 +35,6 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const http = require('http');
 const https = require('https');
-const httpAgent = new http.Agent({ keepAlive: false });
-const httpsAgent = new https.Agent({ keepAlive: false });
 
 // Settings
 var tapisSettings = require('./tapisSettings');
@@ -66,6 +64,9 @@ tapisV3.init_with_schema = function(schema) {
     return tapisV3;
 };
 
+// turn keep alive off
+const httpAgent = new http.Agent({ keepAlive: false });
+const httpsAgent = new https.Agent({ keepAlive: false });
 const instance = axios.create({
     httpAgent: httpAgent,
     httpsAgent: httpsAgent,
@@ -78,7 +79,6 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
     var context = 'tapisV3.sendRequest';
     var msg = null;
 
-//    const response = await axios(requestSettings)
     const response = await instance(requestSettings)
         .catch(function(error) {
             if (allow404 && (error.response.status == 404)) {
@@ -87,10 +87,8 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
             // errors from tapis may contain sensitive information, like tokens, log carefully
             if (error.response && error.response.data) {
                 msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error.response.data, null, 2));
-                //webhookIO.postToSlack(msg);
             } else {
                 msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error, null, 2));
-                //webhookIO.postToSlack(msg);
             }
             // send generic message
             msg = 'Tapis request failed, check system logs';
