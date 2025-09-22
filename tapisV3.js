@@ -33,6 +33,8 @@ var _ = require('underscore');
 var FormData = require('form-data');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const http = require('http');
+const https = require('https');
 
 // Settings
 var tapisSettings = require('./tapisSettings');
@@ -62,19 +64,37 @@ tapisV3.init_with_schema = function(schema) {
     return tapisV3;
 };
 
+// turn keep alive off
+const httpAgent = new http.Agent({ keepAlive: false });
+const httpsAgent = new https.Agent({ keepAlive: false });
+const instance = axios.create({
+    httpAgent: httpAgent,
+    httpsAgent: httpsAgent,
+});
+
 //
 // Generic send request
 //
 tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
+    var context = 'tapisV3.sendRequest';
     var msg = null;
 
-    const response = await axios(requestSettings)
+    const response = await instance(requestSettings)
         .catch(function(error) {
             if (allow404 && (error.response.status == 404)) {
                 return Promise.resolve(null);
             }
-            if (error.response && error.response.data) msg = 'Tapis request failed with error: ' + JSON.stringify(error.response.data);
-            else msg = 'Tapis request failed with error: ' + JSON.stringify(error);
+            // errors from tapis may contain sensitive information, like tokens, log carefully
+            if (error.response && error.response.data) {
+                msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error.response.data, null, 2));
+            } else {
+                msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error, null, 2));
+            }
+            // send generic message
+            msg = 'Tapis request failed, check system logs';
+            msg = config.log.error(context, msg);
+            webhookIO.postToSlack(msg);
+
             return Promise.reject(new Error(msg));
         });
 
@@ -523,7 +543,7 @@ tapisV3.deleteRecord = function(collection, doc_id) {
                 }
             };
 
-            console.log(requestSettings);
+            //console.log(requestSettings);
 
             return tapisV3.sendRequest(requestSettings);
         });
