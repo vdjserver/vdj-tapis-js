@@ -1063,7 +1063,7 @@ tapisV3.queryMetadataForProject = function(project_uuid, meta_name, additional_f
 
 // create metadata associated with project
 // security: it is assumed user has project access
-tapisV3.createMetadataForProject = async function(project_uuid, meta_name, obj) {
+tapisV3.createMetadataForProject = async function(project_uuid, meta_name, obj, uuid_assign) {
     //if (tapisSettings.shouldInjectError("tapisV3.createMetadataForProject")) return tapisSettings.performInjectError();
 
     var date = new Date().toISOString();
@@ -1080,6 +1080,7 @@ tapisV3.createMetadataForProject = async function(project_uuid, meta_name, obj) 
 
     if (obj['associationIds']) metadata['associationIds'] = obj['associationIds'];
     if (!metadata['associationIds'].includes(project_uuid)) metadata['associationIds'].push(project_uuid);
+    if (uuid_assign) metadata['value'][uuid_assign] = uuid;
 
     // validate
     if (tapisV3.schema) {
