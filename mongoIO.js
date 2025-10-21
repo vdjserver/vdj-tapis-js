@@ -416,17 +416,23 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
         return schema.map_value(map);
     };
 
+    var isGzip = filename.endsWith(".gz");
+
     return new Promise(function(resolve, reject) {
 
-    var readable = fs.createReadStream(filename)
-        .on('error', async function(e) {
-            reject(e);
-        })
-        .pipe(zlib.createGunzip())
-        .on('error', async function(e) {
-            reject(e);
-        })
-        .pipe(csv({separator:'\t', mapValues: mapValues}))
+        var readable = fs.createReadStream(filename)
+            .on('error', async function(e) {
+                reject(e);
+            });
+
+        if (isGzip) {
+            readable.pipe(zlib.createGunzip())
+            .on('error', async function(e) {
+                reject(e);
+            });
+        }
+
+        readable.pipe(csv({separator:'\t', mapValues: mapValues}))
         .on('error', async function(e) {
             reject(e);
         })
