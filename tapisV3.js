@@ -1621,6 +1621,24 @@ tapisV3.createProjectFilePostit = function(project_uuid, obj) {
         });
 };
 
+tapisV3.deletePostit = function(postit_id) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/postits/' + postit_id,
+                method: 'DELETE',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
 tapisV3.moveProjectFile = function(fromPath, toPath) {
 
     var postData = {
