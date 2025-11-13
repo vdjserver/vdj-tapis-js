@@ -36,7 +36,7 @@ function parseList(value)
 {
     if (value) {
         let names = value.split(',');
-        console.log(names);
+        //console.log(names);
         return names;
     }
     return [];
@@ -86,12 +86,16 @@ var tapisSettings = {
     debugConsole: parseBoolean(process.env.DEBUG_CONSOLE),
 
     // Mongodb, meta/v3 settings
+    // TODO: are these used anywhere?
     mongo_hostname: process.env.MONGODB_HOST,
     mongo_dbname: process.env.TAPIS_MONGODB_DB,
     mongo_username: process.env.MONGODB_USER,
     mongo_userSecret: process.env.MONGODB_SECRET,
+
+    // get these from mongoIO instead
     mongo_queryCollection: process.env.MONGODB_QUERY_COLLECTION,
     mongo_loadCollection: process.env.MONGODB_LOAD_COLLECTION,
+
     // max pagesize
     max_size: 1000,
     // to deterimine if GET or POST is used for query
