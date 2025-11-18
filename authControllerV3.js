@@ -300,15 +300,20 @@ AuthController.verifyUser = function(username) {
     if (!username) return false;
 
     // return a promise
-    return tapisIO.getUserVerificationMetadata(username)
-        .then(function(userVerificationMetadata) {
-            if (userVerificationMetadata && userVerificationMetadata[0] && userVerificationMetadata[0].value.isVerified === true) {
-                // valid
+    return tapisIO.getUserProfile(username)
+        .then(function(userProfileMetadata) {
+            // just check user profile
+            if (userProfileMetadata && userProfileMetadata[0])
                 return true;
-            }
-            else {
+            else
                 return false;
-            }
+//             if (userVerificationMetadata && userVerificationMetadata[0] && userVerificationMetadata[0].value.isVerified === true) {
+//                 // valid
+//                 return true;
+//             }
+//             else {
+//                 return false;
+//             }
         })
         .catch(function(error) {
             var msg = 'error validating user: ' + username + ', error ' + error;
