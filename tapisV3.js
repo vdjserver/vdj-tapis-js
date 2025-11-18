@@ -1753,7 +1753,7 @@ tapisV3.getAllUserProfiles = async function() {
     //if (tapisSettings.shouldInjectError("tapisV3.getUserProfile")) return tapisSettings.performInjectError();
 
     var filter = {"name": "profile"};
-    return await tapisV3.performServiceQuery('tapis_meta', filter);
+    return await tapisV3.performMultiServiceQuery('tapis_meta', filter);
 };
 
 tapisV3.createUserProfile = function(user, username) {
