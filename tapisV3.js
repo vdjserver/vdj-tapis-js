@@ -1360,19 +1360,29 @@ tapisV3.deleteAllProjectMetadataForName = async function(project_uuid, meta_name
     return Promise.resolve(metadataList.length);
 };
 
-tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, keep_uuids) {
+tapisV3.gatherRepertoireMetadataForProject = async function(username, projectUuid, keep_uuids) {
     var context = 'tapisV3.gatherRepertoireMetadataForProject';
 
     var msg = null;
+    var projectMetadata = null;
     var repertoireMetadata = [];
     var subjectMetadata = {};
     var sampleMetadata = {};
     var dpMetadata = {};
-    var projectUuid = projectMetadata['uuid'];
 
     if (!tapisV3.schema) {
         return Promise.reject(new Error('schema is not defined for tapis.'));
     }
+
+    // get the project/study metadata
+    var projectMetadata = await tapisV3.getAllProjectMetadata(username, projectUuid)
+        .catch(function(error) { Promise.reject(error); });
+
+    // 404 not found
+    if (projectMetadata.length == 0) return Promise.reject(new Error('project: ' + projectUuid + ' not found.'));
+    // yikes!
+    if (projectMetadata.length != 1) return Promise.reject(new Error('internal error, multiple records have the same uuid.'));
+    projectMetadata = projectMetadata[0];
 
     // get repertoire objects
     var models = await tapisV3.queryMetadataForProject(projectUuid, 'repertoire')
@@ -1388,6 +1398,10 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
     //console.log(JSON.stringify(blank, null, 2));
 
     if (!keep_uuids) delete study['vdjserver'];
+    else {
+        if (! study['vdjserver']) study['vdjserver'] = {};
+        study['vdjserver']['vdjserver_uuid'] = projectUuid;
+    }
 
     for (let i in models) {
         var model = models[i].value;
@@ -1433,7 +1447,11 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
             config.log.info(context, 'cannot collect subject: '
                           + rep['subject']['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
         }
-        if (!keep_uuids) delete subject['value']['vdjserver'];
+        if (!keep_uuids) delete subject['vdjserver'];
+        else {
+            if (! subject['vdjserver']) subject['vdjserver'] = {};
+            subject['vdjserver']['vdjserver_uuid'] = rep['subject']['vdjserver_uuid'];
+        }
         rep['subject'] = subject;
 
         var samples = [];
@@ -1443,7 +1461,11 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
                 config.log.info(context, 'cannot collect sample: '
                               + rep['sample'][j]['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
             }
-            if (!keep_uuids) delete sample['value']['vdjserver'];
+            if (!keep_uuids) delete sample['vdjserver'];
+            else {
+                if (! sample['vdjserver']) sample['vdjserver'] = {};
+                sample['vdjserver']['vdjserver_uuid'] = rep['sample'][j]['vdjserver_uuid'];
+            }
             samples.push(sample);
         }
         rep['sample'] = samples;
@@ -1457,7 +1479,11 @@ tapisV3.gatherRepertoireMetadataForProject = async function(projectMetadata, kee
                     config.log.info(context, 'cannot collect data_processing: '
                                   + rep['data_processing'][j]['vdjserver_uuid'] + ' for repertoire: ' + rep['repertoire_id']);
                 }
-                if (!keep_uuids) delete dp['value']['vdjserver'];
+                if (!keep_uuids) delete dp['vdjserver'];
+                else {
+                    if (! dp['vdjserver']) dp['vdjserver'] = {};
+                    dp['vdjserver']['vdjserver_uuid'] = rep['data_processing'][j]['vdjserver_uuid'];
+                }
                 dps.push(dp);
             }
         }
@@ -1499,9 +1525,9 @@ tapisV3.grantStorageSystemPermissions = function(username) {
         });
 };
 
-tapisV3.createProjectDirectory = function(directory) {
+tapisV3.createProjectDirectory = function(project_uuid, directory) {
 
-    var postData = { path: '/projects/' + directory };
+    var postData = { path: '/projects/' + project_uuid + '/' + directory };
 
     return ServiceAccount.getToken()
         .then(function(token) {
@@ -1673,6 +1699,29 @@ tapisV3.uploadFileToProjectTempDirectory = function(projectUuid, filename, filed
         .then(function(token) {
             var requestSettings = {
                 url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/ops/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/deleted/' + filename,
+                method: 'POST',
+                data: form,
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'multipart/form-data',
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings)
+        });
+};
+
+tapisV3.uploadFileToProjectDirectory = function(projectUuid, directory, filename, filedata) {
+
+    // filedata should be data stored in a Blob()
+    var form = new FormData();
+    form.append('file', filedata);
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/ops/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/' + directory + '/' + filename,
                 method: 'POST',
                 data: form,
                 headers: {
