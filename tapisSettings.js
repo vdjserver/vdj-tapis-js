@@ -85,16 +85,13 @@ var tapisSettings = {
     // Debug
     debugConsole: parseBoolean(process.env.DEBUG_CONSOLE),
 
-    // Mongodb, meta/v3 settings
-    // TODO: are these used anywhere?
-    mongo_hostname: process.env.MONGODB_HOST,
+    // Tapis meta/v3 settings only needs a db name
     mongo_dbname: process.env.TAPIS_MONGODB_DB,
-    mongo_username: process.env.MONGODB_USER,
-    mongo_userSecret: process.env.MONGODB_SECRET,
-
-    // get these from mongoIO instead
-    mongo_queryCollection: process.env.MONGODB_QUERY_COLLECTION,
-    mongo_loadCollection: process.env.MONGODB_LOAD_COLLECTION,
+    // Should only be defined if direct access is needed to the db
+    // These are not used for the ADC repository, those are in mongoSettings
+    mongo_hostname: process.env.TAPIS_MONGODB_HOST,
+    mongo_username: process.env.TAPIS_MONGODB_USER,
+    mongo_userSecret: process.env.TAPIS_MONGODB_SECRET,
 
     // max pagesize
     max_size: 1000,
