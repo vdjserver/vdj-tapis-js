@@ -86,11 +86,16 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
             }
             // errors from tapis may contain sensitive information, like tokens, log carefully
             if (error.response && error.response.data) {
-                msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error.response.data, null, 2));
+                msg = config.log.error(context, 'Tapis request:\n'
+                                       + JSON.stringify(requestSettings, null, 2) + '\n'
+                                       + 'failed with error: ' + JSON.stringify(error.response.data, null, 2));
             } else {
-                msg = config.log.error(context, 'Tapis request failed with error: ' + JSON.stringify(error, null, 2));
+                msg = config.log.error(context, 'Tapis request:\n'
+                                       + JSON.stringify(requestSettings, null, 2) + '\n'
+                                       + 'failed with error: ' + JSON.stringify(error, null, 2));
             }
-            // send generic message
+
+            // slack is semi-public so only send generic message
             msg = 'Tapis request failed, check system logs';
             msg = config.log.error(context, msg);
             webhookIO.postToSlack(msg);

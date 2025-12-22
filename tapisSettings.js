@@ -116,6 +116,7 @@ tapisSettings.get_default_tapis = function(config) {
         if (tapisSettings.tapis_version == 2) tapisSettings.config.log.info(context, 'Using Tapis V2 API', true);
         else if (tapisSettings.tapis_version == 3) {
             tapisSettings.config.log.info(context, 'Using Tapis V3 API with ' + tapisSettings.mongo_dbname + ' DB', true);
+            if (! tapisSettings.mongo_dbname) tapisSettings.config.log.error(context, 'You probably should define the Tapis V3 Meta API dbname.')
             if (tapisSettings.serviceAccountJWT)
                 tapisSettings.config.log.info(context, 'Service account using long-lived token.', true);
             if (tapisSettings.adminAccountKeys.length > 0)

@@ -35,7 +35,6 @@ var mongoIO  = {};
 module.exports = mongoIO;
 
 // Server environment config
-//var config = require('../config/config');
 var mongoSettings = require('./mongoSettings');
 
 // Tapis
@@ -60,8 +59,23 @@ var airr = require('airr-js');
 mongoIO.testConnection = async function() {
 
     return new Promise(function(resolve, reject) {
-        // get connection to database
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        // get connection to query database
+        MongoClient.connect(mongoSettings.query_url, async function(err, db) {
+            if (err) {
+                resolve(false)
+            } else {
+                db.close();
+                resolve(true);
+            }
+        });
+    });
+}
+
+mongoIO.testLoadConnection = async function() {
+
+    return new Promise(function(resolve, reject) {
+        // get connection to load database
+        MongoClient.connect(mongoSettings.load_url, async function(err, db) {
             if (err) {
                 resolve(false)
             } else {
@@ -154,7 +168,7 @@ mongoIO.performQuery = async function(collection_name, query, from, size, projec
 
     return new Promise(function(resolve, reject) {
 
-        return MongoClient.connect(mongoSettings.url, async function(err, db) {
+        return MongoClient.connect(mongoSettings.query_url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
                 msg = config.log.error(context, msg);
@@ -162,7 +176,7 @@ mongoIO.performQuery = async function(collection_name, query, from, size, projec
                 return reject(new Error(msg))
             }
 
-            var v1airr = db.db(mongoSettings.dbname);
+            var v1airr = db.db(mongoSettings.queryDatabase);
             var collection = v1airr.collection(collection_name);
 
             // perform a normal query
@@ -190,12 +204,12 @@ mongoIO.performAggregation = async function(collection_name, agg) {
 
     return new Promise(function(resolve, reject) {
 
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        MongoClient.connect(mongoSettings.query_url, async function(err, db) {
             if (err) return reject(new Error('Could not connect to database.'));
 
             config.log.info(context, "Connected successfully to mongodb, timeout set to: " + mongoSettings.queryTimeout);
 
-            var v1airr = db.db(mongoSettings.dbname);
+            var v1airr = db.db(mongoSettings.queryDatabase);
             var collection = v1airr.collection(collection_name);
 
             // perform a facets aggregation query
@@ -219,12 +233,12 @@ mongoIO.queryCount = async function(collection_name, query) {
 
     return new Promise(function(resolve, reject) {
 
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        MongoClient.connect(mongoSettings.query_url, async function(err, db) {
             if (err) return reject(new Error('Could not connect to database.'));
 
             config.log.info(context, "Connected successfully to mongodb");
 
-            var v1airr = db.db(mongoSettings.dbname);
+            var v1airr = db.db(mongoSettings.queryDatabase);
             var collection = v1airr.collection(collection_name);
 
             // perform a facets aggregation query
@@ -546,14 +560,14 @@ mongoIO.deleteLoadSet = async function(repertoire_id, load_set, loadCollection) 
 
     return new Promise(function(resolve, reject) {
         // get connection to database
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        MongoClient.connect(mongoSettings.load_url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
                 msg = config.log.error(context, msg);
                 webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
-                var v1airr = db.db(mongoSettings.dbname);
+                var v1airr = db.db(mongoSettings.loadDatabase);
                 var collection = v1airr.collection(loadCollection);
 
                 // delete load_set for repertoire
@@ -579,7 +593,7 @@ mongoIO.insertRearrangement = async function(records, loadCollection) {
 
     return new Promise(function(resolve, reject) {
         // get connection to database
-        const client = new MongoClient(mongoSettings.url, { socketTimeoutMS: 0 });
+        const client = new MongoClient(mongoSettings.load_url, { socketTimeoutMS: 0 });
         client.connect(async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
@@ -587,7 +601,7 @@ mongoIO.insertRearrangement = async function(records, loadCollection) {
                 webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
-                var v1airr = db.db(mongoSettings.dbname);
+                var v1airr = db.db(mongoSettings.loadDatabase);
                 //var collection = v1airr.collection('rearrangement');
                 var collection = v1airr.collection(loadCollection);
 
@@ -607,14 +621,14 @@ mongoIO.deleteRepertoire = async function(repertoire_id, loadCollection) {
 
     return new Promise(function(resolve, reject) {
         // get connection to database
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        MongoClient.connect(mongoSettings.load_url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
                 msg = config.log.error(context, msg);
                 webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
-                var v1airr = db.db(mongoSettings.dbname);
+                var v1airr = db.db(mongoSettings.loadDatabase);
                 var collection = v1airr.collection(loadCollection);
 
                 // delete than insert repertoire
@@ -636,14 +650,14 @@ mongoIO.insertRepertoire = async function(repertoire, loadCollection) {
 
     return new Promise(function(resolve, reject) {
         // get connection to database
-        MongoClient.connect(mongoSettings.url, async function(err, db) {
+        MongoClient.connect(mongoSettings.load_url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
                 msg = config.log.error(context, msg);
                 webhookIO.postToSlack(msg);
                 reject(new Error(msg))
             } else {
-                var v1airr = db.db(mongoSettings.dbname);
+                var v1airr = db.db(mongoSettings.loadDatabase);
                 var collection = v1airr.collection(loadCollection);
 
                 mongoIO.cleanObject(repertoire);
@@ -835,7 +849,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
         var first = true;
         var cnt = 0;
         var clean_record = adc_mongo_query.endpoint_map[metadata['value']['endpoint']];
-        return MongoClient.connect(mongoSettings.url, async function(err, db) {
+        return MongoClient.connect(mongoSettings.query_url, async function(err, db) {
             if (err) {
                 var msg = "Could not connect to database: " + err;
                 msg = config.log.error(context, msg);
@@ -843,7 +857,7 @@ mongoIO.performAsyncQueryToFile = async function(metadata, filename) {
                 return reject(new Error(msg))
             }
 
-            var v1airr = db.db(mongoSettings.dbname);
+            var v1airr = db.db(mongoSettings.queryDatabase);
             var collection = v1airr.collection(metadata['value']['collection']);
             config.log.info(context, JSON.stringify(parsed_query));
 
