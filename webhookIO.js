@@ -57,13 +57,15 @@ webhookIO.postToSlack = async function(eventMessage) {
         }
     };
 
+    var msg = null;
     var response = await axios(requestSettings)
         .catch(function(error) {
-            var msg = 'Failed to send slack message: ' + JSON.stringify(error);
-            return Promise.reject(new Error(msg));
+            msg = 'Failed to send slack message: ' + JSON.stringify(error);
+            console.error(msg);
+           // ignore error and continue
         });
 
-    console.log('Posted slack webhook for message: "' + eventMessage + '"');
+    if (!msg) console.log('Posted slack webhook for message: "' + eventMessage + '"');
 
-    return Promise.resolve(response.data);
+    return Promise.resolve();
 };
