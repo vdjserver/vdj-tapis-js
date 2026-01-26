@@ -303,7 +303,7 @@ tapisV3.getApplication = function(name, version) {
                 }
             };
 
-            return tapisV3.sendRequest(requestSettings)
+            return tapisV3.sendRequest(requestSettings, true)
                 .then(function(responseObject) {
                     return Promise.resolve(responseObject.result);
                 })
@@ -1741,6 +1741,22 @@ tapisV3.getProjectFileContents = function(projectUuid, fileName) {
         .then(function(token) {
             var requestSettings = {
                 url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/content/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/files/' + fileName,
+                method: 'GET',
+                headers: {
+                    'X-Tapis-Token': ServiceAccount.accessToken()
+                }
+            };
+
+            return tapisV3.sendRequest(requestSettings);
+        });
+};
+
+tapisV3.getProjectJobFileContents = function(projectUuid, analysis_id, job_id, fileName) {
+
+    return ServiceAccount.getToken()
+        .then(function(token) {
+            var requestSettings = {
+                url: 'https://' + tapisSettings.hostnameV3 + '/v3/files/content/' + tapisSettings.storageSystem + '/projects/' + projectUuid + '/analyses/' + analysis_id + '/' + job_id + '/' + fileName,
                 method: 'GET',
                 headers: {
                     'X-Tapis-Token': ServiceAccount.accessToken()
