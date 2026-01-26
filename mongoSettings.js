@@ -26,78 +26,71 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-// local DB, use tapisSettings for Tapis DB
+// ADC DB, use tapisSettings for Tapis DB
 var mongoSettings = {
     // MongoDB Settings
-    // old settings
-    hostname: process.env.MONGODB_HOST,
-    dbname: process.env.MONGODB_DB,
-    username: process.env.MONGODB_USER,
-    userSecret: process.env.MONGODB_SECRET,
 
-    hostMode: process.env.MONGODB_HOST_MODE,
+    // ADC query
     queryHost: process.env.MONGODB_QUERY_HOST,
     queryDatabase: process.env.MONGODB_QUERY_DB,
+    queryUsername: process.env.MONGODB_QUERY_USER,
+    queryUserSecret: process.env.MONGODB_QUERY_SECRET,
     queryCollection: process.env.MONGODB_QUERY_COLLECTION,
 
+    // ADC load
     loadHost: process.env.MONGODB_LOAD_HOST,
     loadDatabase: process.env.MONGODB_LOAD_DB,
+    loadUsername: process.env.MONGODB_QUERY_USER,
+    loadUserSecret: process.env.MONGODB_QUERY_SECRET,
     loadCollection: process.env.MONGODB_LOAD_COLLECTION,
 
     queryTimeout: Number(process.env.MONGODB_QUERY_TIMEOUT),
 
     // constructed connect url
-    url: null
+    query_url: null,
+    load_url: null
 };
 
 module.exports = mongoSettings;
 
 mongoSettings.set_config = function(config) {
-    var context = 'mongo';
+    var context = 'mongoSettings';
 
     if (config) {
-        config.log.info(context, 'config object set for app: ' + config.name);
+        config.log.info(context, 'config object set for app: ' + config.name, true);
         mongoSettings.config = config;
     }
 
-    config.log.info(context, 'Using DB: ' + mongoSettings.dbname);
+    config.log.info(context, 'Using query host: ' + mongoSettings.queryHost, true);
+    config.log.info(context, 'Using query database: ' + mongoSettings.queryDatabase, true);
+    config.log.info(context, 'Using query username: ' + mongoSettings.queryUsername, true);
+    config.log.info(context, 'Using query collection: ' + mongoSettings.queryCollection, true);
 
-    config.log.info(context, 'Host mode: ' + mongoSettings.hostMode);
+    config.log.info(context, 'Using load host: ' + mongoSettings.loadHost, true);
+    config.log.info(context, 'Using load database: ' + mongoSettings.loadDatabase, true);
+    config.log.info(context, 'Using load username: ' + mongoSettings.loadUsername, true);
+    config.log.info(context, 'Using load collection: ' + mongoSettings.loadCollection, true);
 
-    config.log.info(context, 'Using query host: ' + mongoSettings.queryHost);
-    config.log.info(context, 'Using query database: ' + mongoSettings.queryDatabase);
-    config.log.info(context, 'Using query collection: ' + mongoSettings.queryCollection);
+    config.log.info(context, 'Using DB timeout: ' + mongoSettings.queryTimeout, true);
 
-    config.log.info(context, 'Using load host: ' + mongoSettings.loadHost);
-    config.log.info(context, 'Using load database: ' + mongoSettings.loadDatabase);
-    config.log.info(context, 'Using load collection: ' + mongoSettings.loadCollection);
-
-    config.log.info(context, 'Using DB timeout: ' + mongoSettings.queryTimeout);
-
-    if (mongoSettings.hostMode == 'load') {
-        config.log.info(context, 'ADC Repository is in load mode.');
-
-        if (mongoSettings.username) {
-            mongoSettings.url = 'mongodb://'
-                + mongoSettings.username + ':' + mongoSettings.userSecret + '@'
-                + mongoSettings.loadHost + ':27017/' + mongoSettings.loadDatabase;
-        } else {
-            mongoSettings.url = 'mongodb://'
-                + mongoSettings.loadHost + ':27017/' + mongoSettings.loadDatabase;
-        }
+    // query DB
+    if (mongoSettings.queryUsername) {
+        mongoSettings.query_url = 'mongodb://'
+            + mongoSettings.queryUsername + ':' + mongoSettings.queryUserSecret + '@'
+            + mongoSettings.queryHost + ':27017/' + mongoSettings.queryDatabase;
     } else {
-        // otherwise, default to query
-        config.log.info(context, 'ADC Repository is in query mode.');
+        mongoSettings.query_url = 'mongodb://'
+            + mongoSettings.queryHost + ':27017/' + mongoSettings.queryDatabase;
+    }
 
-        if (mongoSettings.username) {
-            mongoSettings.url = 'mongodb://'
-                + mongoSettings.username + ':' + mongoSettings.userSecret + '@'
-                + mongoSettings.queryHost + ':27017/' + mongoSettings.queryDatabase;
-        } else {
-            mongoSettings.url = 'mongodb://'
-                + mongoSettings.queryHost + ':27017/' + mongoSettings.queryDatabase;
-        }
-
+    // load DB
+    if (mongoSettings.queryUsername) {
+        mongoSettings.load_url = 'mongodb://'
+            + mongoSettings.loadUsername + ':' + mongoSettings.loadUserSecret + '@'
+            + mongoSettings.loadHost + ':27017/' + mongoSettings.loadDatabase;
+    } else {
+        mongoSettings.load_url = 'mongodb://'
+            + mongoSettings.loadHost + ':27017/' + mongoSettings.loadDatabase;
     }
 
     return mongoSettings;
