@@ -82,6 +82,7 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
     const response = await instance(requestSettings)
         .catch(function(error) {
             if (allow404 && (error.response.status == 404)) {
+                msg = '404 not found';
                 return Promise.resolve(null);
             }
             // errors from tapis may contain sensitive information, like tokens, log carefully
@@ -102,6 +103,9 @@ tapisV3.sendRequest = async function(requestSettings, allow404, trap408) {
 
             return Promise.reject(new Error(msg));
         });
+
+    // when we trap an error like 404, but do not throw it
+    if (msg) return Promise.resolve(null);
 
     //console.log(response);
     //console.log(response.data);
@@ -310,7 +314,8 @@ tapisV3.getApplication = function(name, version) {
 
             return tapisV3.sendRequest(requestSettings, true)
                 .then(function(responseObject) {
-                    return Promise.resolve(responseObject.result);
+                    if (!responseObject) return Promise.resolve(responseObject); // 404 not found
+                    else return Promise.resolve(responseObject.result);
                 })
                 .catch(function(errorObject) {
                     return Promise.reject(errorObject);
