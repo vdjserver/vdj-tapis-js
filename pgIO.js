@@ -53,13 +53,7 @@ const zlib = require('zlib');
 // get connection
 pgIO.getConnection = function() {
 
-    const sql = postgres('postgres://postgres:nlGKArR8iBHD88QHYqBh6MlZ@ak-db:5432/postgres', {
-      host                 : 'ak-db',            // Postgres ip address[s] or domain name[s]
-      port                 : 5432,          // Postgres server port[s]
-      database             : 'postgres',            // Name of database to connect to
-      username             : 'postgres',            // Username of database user
-      password             : 'nlGKArR8iBHD88QHYqBh6MlZ',            // Password of database user
-    })
+    const sql = postgres(pgSettings.url);
 
     return sql;
 }
@@ -67,10 +61,15 @@ pgIO.getConnection = function() {
 // test connection
 pgIO.testConnection = async function() {
 
-    const sql = pgIO.getConnection();
-    const users = await sql`
+    try {
+	const sql = pgIO.getConnection();
+	const users = await sql`
         select * from pg_user
-    `
-
-    console.log(users);
+        `
+	console.log(users);
+	return Promise.resolve();
+    } catch (e) {
+	console.error(e);
+	return Promise.reject();
+    }
 }

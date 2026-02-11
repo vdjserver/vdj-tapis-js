@@ -29,9 +29,10 @@
 // local DB, use tapisSettings for Tapis DB
 var pgSettings = {
     // Postgresql Settings
-    hostname: process.env.MONGODB_HOST,
-    dbname: process.env.MONGODB_DB,
-    username: process.env.MONGODB_USER,
+    hostname: process.env.POSTGRES_HOST,
+    port: process.env.POSTGRES_PORT,
+    dbname: process.env.POSTGRES_DB,
+    username: process.env.POSTGRES_USER,
     userSecret: process.env.POSTGRES_PASSWORD,
     url: null
 };
@@ -42,20 +43,24 @@ pgSettings.set_config = function(config) {
     var context = 'postgres';
 
     if (config) {
-        config.log.info(context, 'config object set for app: ' + config.name);
+        config.log.info(context, 'pgSettings config object set for app: ' + config.name, true);
         pgSettings.config = config;
     }
 
-    config.log.info(context, 'Using DB: ' + pgSettings.dbname);
-    
+    if (!pgSettings.port) pgSettings.port = 5432;
     if (pgSettings.username) {
         pgSettings.url = 'postgres://'
             + pgSettings.username + ':' + pgSettings.userSecret + '@'
-            + pgSettings.hostname + ':5432/' + pgSettings.dbname;
+            + pgSettings.hostname + ':' + pgSettings.port + '/' + pgSettings.dbname;
     } else {
         pgSettings.url = 'postgres://'
-            + pgSettings.hostname + ':5432/' + pgSettings.dbname;
+            + pgSettings.hostname + ':' + pgSettings.port + '/' + pgSettings.dbname;
     }
+
+    config.log.info(context, 'Using Postgres host: ' + pgSettings.host, true);
+    config.log.info(context, 'Using Postgres port: ' + pgSettings.port, true);
+    config.log.info(context, 'Using Postgres DB: ' + pgSettings.dbname, true);
+    config.log.info(context, 'Using Postgres username: ' + pgSettings.username, true);
 
     return pgSettings;
 }
