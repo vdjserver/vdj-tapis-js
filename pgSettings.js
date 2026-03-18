@@ -57,10 +57,20 @@ pgSettings.set_config = function(config) {
             + pgSettings.hostname + ':' + pgSettings.port + '/' + pgSettings.dbname;
     }
 
-    config.log.info(context, 'Using Postgres host: ' + pgSettings.host, true);
+    config.log.info(context, 'Using Postgres host: ' + pgSettings.hostname, true);
     config.log.info(context, 'Using Postgres port: ' + pgSettings.port, true);
     config.log.info(context, 'Using Postgres DB: ' + pgSettings.dbname, true);
     config.log.info(context, 'Using Postgres username: ' + pgSettings.username, true);
 
     return pgSettings;
+}
+
+pgSettings.pg_connection = function() {
+    return {
+        user: pgSettings.username,
+        host: pgSettings.hostname,
+        database: pgSettings.dbname,
+        password: pgSettings.userSecret,
+        port: pgSettings.port
+    };
 }
