@@ -132,6 +132,11 @@ ADCMongoQuery.endpoint_map = {
 ADCMongoQuery.constructQueryOperation = function(airr, schema, filter, error, check_query_support, disable_contains) {
     var context = 'ADCMongoQuery.constructQueryOperation';
 
+    // no filter is empty query
+    if (!filter) {
+       return '{}';
+    }
+
     if (!filter['op']) {
         error['message'] = 'missing op';
         return null;
