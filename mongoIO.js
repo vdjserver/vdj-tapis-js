@@ -259,12 +259,11 @@ mongoIO.queryCount = async function(collection_name, query) {
 mongoIO.processRearrangementRow = function(row, rep, dp_id, load_set) {
     // identifiers
     if (row['sequence_id']) delete row['sequence_id'];
-    if (!row['repertoire_id']) row['repertoire_id'] = rep['repertoire_id'];
-    if (row['repertoire_id'].length == 0) row['repertoire_id'] = rep['repertoire_id'];
-    if (!row['data_processing_id'])
-        row['data_processing_id'] = dp_id;
-    if (row['data_processing_id'].length == 0)
-        row['data_processing_id'] = dp_id;
+
+    // repertoire_id and data_processing_id have to match
+    row['repertoire_id'] = rep['repertoire_id'];
+    row['data_processing_id'] = dp_id;
+
     row['vdjserver_load_set'] = load_set
 
     // change V gene calls to an array, add gene and subgroup
@@ -431,13 +430,28 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
     };
 
     var isGzip = filename.endsWith(".gz");
+    console.log(isGzip);
+    console.log(loadCollection);
 
     return new Promise(function(resolve, reject) {
 
-        var readable = fs.createReadStream(filename)
-            .on('error', async function(e) {
-                reject(e);
-            });
+        var readable = null;
+        if (isGzip) {
+            readable = fs.createReadStream(filename)
+                .pipe(zlib.createGunzip())
+                .pipe(csv({separator:'\t', mapValues: mapValues}))
+                .on('error', async function(e) {
+                    reject(e);
+                });
+        } else {
+            readable = fs.createReadStream(filename)
+                .pipe(csv({separator:'\t', mapValues: mapValues}))
+                .on('error', async function(e) {
+                    reject(e);
+                });
+        }
+
+       /*        var readable = fs.createReadStream(filename)
 
         if (isGzip) {
             readable.pipe(zlib.createGunzip())
@@ -449,8 +463,13 @@ mongoIO.processFile = async function(filename, rep, dp_id, dataLoad, load_set, l
         readable.pipe(csv({separator:'\t', mapValues: mapValues}))
         .on('error', async function(e) {
             reject(e);
+            }) */
+
+        readable.on('error', async function(e) {
+            reject(e);
         })
         .on('data', async function(row) {
+            //console.log(row);
             rows.push(row);
             if (rows.length == 10000) {
                 // pause the stream while we insert the data
