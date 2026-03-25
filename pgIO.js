@@ -136,6 +136,10 @@ pgIO.restrictedQueryOperation = async function(cdr3_value) {
                 obj['tcr']['receptor']['trb_chain'] = {};
                 for (let j in trb_fields) obj['tcr']['receptor']['trb_chain'][trb_fields[j]] = row['trb_chain_' + trb_fields[j]];
             }
+            if (row['epitope_akc_id']) {
+                if (!obj['tcr']['epitope']) obj['tcr']['epitope'] = {};
+                for (let j in epitope_fields) obj['tcr']['epitope'][epitope_fields[j]] = row['epitope_' + epitope_fields[j]];
+            }
             if (row['assay_object']) {
                 obj['assay'] = row['assay_object'];
             }
