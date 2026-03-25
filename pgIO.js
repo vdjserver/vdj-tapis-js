@@ -84,6 +84,7 @@ pgIO.testConnection = async function() {
 }
 
 pgIO.restrictedQueryOperation = async function(cdr3_value) {
+    let context = 'pgIO.restrictedQueryOperation';
     let pool = pgIO.getPoolConnection();
 
     // TODO: field lists should come from schema
@@ -108,6 +109,7 @@ pgIO.restrictedQueryOperation = async function(cdr3_value) {
     queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
     queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
     queryText += ' WHERE TRUE';
+
     let values = [];
     let paramIndex = 1;
 
@@ -115,7 +117,7 @@ pgIO.restrictedQueryOperation = async function(cdr3_value) {
     queryText += ` AND chb.junction_aa = $${paramIndex}`
     ++paramIndex;
 
-    console.log(queryText);
+    config.log.info(context, queryText);
     let results = [];
     try {
         const res = await pool.query(queryText, values);
@@ -140,6 +142,7 @@ pgIO.restrictedQueryOperation = async function(cdr3_value) {
             results.push(obj);
         }
 
+        config.log.info(context, 'Returning ' + results.length + ' query results.');
         return Promise.resolve(results);
     } catch (err) {
         console.error(err);
