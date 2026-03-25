@@ -1385,8 +1385,14 @@ tapisV3.gatherRepertoireMetadataForProject = async function(username, projectUui
     }
 
     // get the project/study metadata
-    var projectMetadata = await tapisV3.getAllProjectMetadata(username, projectUuid)
-        .catch(function(error) { Promise.reject(error); });
+    var projectMetadata = null;
+    if (username) {
+        projectMetadata = await tapisV3.getAllProjectMetadata(username, projectUuid)
+            .catch(function(error) { Promise.reject(error); });
+    } else {
+        projectMetadata = await tapisV3.getAnyPublicProjectMetadata(projectUuid)
+            .catch(function(error) { Promise.reject(error); });
+    }
 
     // 404 not found
     if (projectMetadata.length == 0) return Promise.reject(new Error('project: ' + projectUuid + ' not found.'));
@@ -1493,6 +1499,7 @@ tapisV3.gatherRepertoireMetadataForProject = async function(username, projectUui
                 else {
                     if (! dp['vdjserver']) dp['vdjserver'] = {};
                     dp['vdjserver']['vdjserver_uuid'] = rep['data_processing'][j]['vdjserver_uuid'];
+                    if (! dp['data_processing_id']) dp['data_processing_id'] = rep['data_processing'][j]['vdjserver_uuid'];
                 }
                 dps.push(dp);
             }
@@ -2185,18 +2192,11 @@ tapisV3.getSystemADCRepositories = function() {
 tapisV3.createADCDownloadCache = function() {
     //if (tapisSettings.shouldInjectError("tapisIO.createADCDownloadCache")) return tapisSettings.performInjectError();
 
-    return Promise.reject('tapisV3.createADCDownloadCache: Not implemented.')
-
-/*    var postData = {
-        name: 'adc_cache',
-        value: {
-            enable_cache: false
-        }
+    var value = {
+        enable_cache: false
     };
 
-    postData = JSON.stringify(postData);
-
-    return tapisV3.createRecord('tapis_meta', postData); */
+    return tapisV3.createDocument('adc_cache', value);
 };
 
 tapisV3.getADCDownloadCache = function() {
