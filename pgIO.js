@@ -83,7 +83,7 @@ pgIO.testConnection = async function() {
     }
 }
 
-pgIO.restrictedQueryOperation = async function(cdr3_value) {
+pgIO.restrictedQueryOperation = async function(trb_junction_aa, tra_junction_aa) {
     let context = 'pgIO.restrictedQueryOperation';
     let pool = pgIO.getPoolConnection();
 
@@ -98,24 +98,40 @@ pgIO.restrictedQueryOperation = async function(cdr3_value) {
     let epitope_fields = ['sequence_aa', 'source_protein', 'source_organism', 'akc_id'];
     for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
 
-    let queryText = 'SELECT ';
-    queryText += select_fields.join(', ');
-    queryText += ', qa.assay_object';
-    queryText += ' FROM "TCRpMHCComplex" c';
-    queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
-    queryText += ' JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
-    queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
-    queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
-    queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
-    queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
-    queryText += ' WHERE TRUE';
-
     let values = [];
     let paramIndex = 1;
 
-    values.push(cdr3_value);
-    queryText += ` AND chb.junction_aa = $${paramIndex}`
-    ++paramIndex;
+    let queryText = 'SELECT ';
+    queryText += select_fields.join(', ');
+    queryText += ', qa.assay_object';
+
+    if (trb_junction_aa) {
+        queryText += ' FROM "TCRpMHCComplex" c';
+        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
+        queryText += ' JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
+        queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
+        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
+        queryText += ' WHERE TRUE';
+
+        values.push(trb_junction_aa);
+        queryText += ` AND chb.junction_aa = $${paramIndex}`
+        ++paramIndex;
+    } else if (tra_junction_aa) {
+        queryText += ' FROM "TCRpMHCComplex" c';
+        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
+        queryText += ' JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
+        queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
+        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
+        queryText += ' WHERE TRUE';
+
+        values.push(tra_junction_aa);
+        queryText += ` AND cha.junction_aa = $${paramIndex}`
+        ++paramIndex;
+    } else return Promise.reject(new Error('no junction_aa provided.'));
 
     config.log.info(context, queryText);
     let results = [];
