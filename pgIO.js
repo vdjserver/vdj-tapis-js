@@ -103,7 +103,7 @@ pgIO.restrictedQueryOperation = async function(trb_junction_aa, tra_junction_aa)
 
     let queryText = 'SELECT ';
     queryText += select_fields.join(', ');
-    queryText += ', qa.assay_object';
+    queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
 
     if (trb_junction_aa) {
         queryText += ' FROM "TCRpMHCComplex" c';
@@ -142,13 +142,16 @@ pgIO.restrictedQueryOperation = async function(trb_junction_aa, tra_junction_aa)
         for (let i in res.rows) {
             let row = res.rows[i];
             let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
+	    if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
             if (row['tra_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+		if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['tra_chain'] = {};
                 for (let j in tra_fields) obj['tcr']['receptor']['tra_chain'][tra_fields[j]] = row['tra_chain_' + tra_fields[j]];
             }
             if (row['trb_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+		if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['trb_chain'] = {};
                 for (let j in trb_fields) obj['tcr']['receptor']['trb_chain'][trb_fields[j]] = row['trb_chain_' + trb_fields[j]];
             }
