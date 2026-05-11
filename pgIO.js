@@ -43,6 +43,8 @@ var ServiceAccount = tapisIO.serviceAccount;
 var GuestAccount = tapisIO.guestAccount;
 var webhookIO = require('vdj-tapis-js/webhookIO');
 
+var airrkb = require('vdj-tapis-js/airrkb_postgres_query');
+
 // Node Libraries
 var _ = require('underscore');
 var postgres = require('postgres');
@@ -80,6 +82,123 @@ pgIO.testConnection = async function() {
     } catch (err) {
         console.error("Database error", err);
         Promise.reject(err);
+    }
+}
+
+pgIO.performQueryOperation = async function(filters, error) {
+    let context = 'pgIO.restrictedQueryOperation';
+    let pool = pgIO.getPoolConnection();
+
+    // TODO: field lists should come from schema
+    let select_fields = [];
+    let tra_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
+    for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
+    
+    let trb_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
+    for (let i in trb_fields) select_fields.push('chb.' + trb_fields[i] + ' AS trb_chain_' + trb_fields[i]);
+
+    let trg_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
+    for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
+
+    let trd_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
+    for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
+
+    let epitope_fields = ['sequence_aa', 'source_protein', 'source_organism', 'akc_id'];
+    for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
+
+    let queryText = 'SELECT ';
+    queryText += select_fields.join(', ');
+    queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
+
+    // construct where clause
+    let values = [];
+    let clause = airrkb.constructWhereClause(filters, error, values);
+
+    console.log(clause);
+    console.log(values);
+
+    if (clause.includes('qa.assay_object')) {
+        queryText += ' FROM "QueryAssay" qa';
+        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.assay_akc_id = qa.akc_id';
+        queryText += ' JOIN "TCRpMHCComplex" c ON c.akc_id = atc.tcr_complexes_akc_id';
+        queryText += ' LEFT OUTER JOIN "TCellReceptor" t ON t.akc_id = c.tcr';
+        queryText += ' LEFT OUTER JOIN "Chain" chb ON chb.akc_id = t.trb_chain';
+        queryText += ' LEFT OUTER JOIN "Chain" cha ON cha.akc_id = t.tra_chain';
+        queryText += ' LEFT OUTER JOIN "Chain" chg ON chg.akc_id = t.trg_chain';
+        queryText += ' LEFT OUTER JOIN "Chain" chd ON chd.akc_id = t.trd_chain';
+        queryText += ' LEFT OUTER JOIN "Epitope" e ON e.akc_id = c.epitope';
+        queryText += ' WHERE TRUE';
+
+    } else {
+        queryText += ' FROM "TCRpMHCComplex" c';
+        queryText += ' LEFT OUTER JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chg ON t.trg_chain = chg.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chd ON t.trd_chain = chd.akc_id';
+        queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
+        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
+        queryText += ' WHERE TRUE';
+    }
+
+    if (clause) queryText += ' AND (' + clause + ') LIMIT 1000';
+    else {
+        console.log(error);
+        return Promise.resolve(null);
+    }
+
+    // perform the query
+    console.log(queryText);
+
+    let results = [];
+    try {
+        const res = await pool.query(queryText, values);
+
+        // format for output response
+        for (let i in res.rows) {
+            let row = res.rows[i];
+            let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
+    	    if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
+            if (row['tra_chain_akc_id']) {
+                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+	        	if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                obj['tcr']['receptor']['tra_chain'] = {};
+                for (let j in tra_fields) obj['tcr']['receptor']['tra_chain'][tra_fields[j]] = row['tra_chain_' + tra_fields[j]];
+            }
+            if (row['trb_chain_akc_id']) {
+                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                obj['tcr']['receptor']['trb_chain'] = {};
+                for (let j in trb_fields) obj['tcr']['receptor']['trb_chain'][trb_fields[j]] = row['trb_chain_' + trb_fields[j]];
+            }
+            if (row['trg_chain_akc_id']) {
+                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                obj['tcr']['receptor']['trg_chain'] = {};
+                for (let j in trg_fields) obj['tcr']['receptor']['trg_chain'][trg_fields[j]] = row['trg_chain_' + trg_fields[j]];
+            }
+            if (row['trd_chain_akc_id']) {
+                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
+		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                obj['tcr']['receptor']['trd_chain'] = {};
+                for (let j in trd_fields) obj['tcr']['receptor']['trd_chain'][trd_fields[j]] = row['trd_chain_' + trd_fields[j]];
+            }
+            if (row['epitope_akc_id']) {
+                if (!obj['tcr']['epitope']) obj['tcr']['epitope'] = {};
+                for (let j in epitope_fields) obj['tcr']['epitope'][epitope_fields[j]] = row['epitope_' + epitope_fields[j]];
+            }
+            if (row['assay_object']) {
+                obj['assay'] = row['assay_object'];
+            }
+            results.push(obj);
+        }
+
+        config.log.info(context, 'Returning ' + results.length + ' query results.');
+        return Promise.resolve(results);
+    } catch (err) {
+        console.error(err);
+        return Promise.reject(err);
     }
 }
 
@@ -174,28 +293,3 @@ pgIO.restrictedQueryOperation = async function(trb_junction_aa, tra_junction_aa)
 
 }
 
-/*
-def get_query_for_locus(locus):
-    query = f"""
-    SELECT
-        c.akc_id,
-        c.epitope,
-        e.sequence_aa,
-        e.source_protein,
-        e.source_organism,
-        ch.junction_aa,
-        ch.species,
-        ch.v_call,
-        ch.j_call
-    FROM "TCRpMHCComplex" c
-    JOIN "TCellReceptor" t
-        ON c.tcr = t.akc_id
-    JOIN "Chain" ch
-        ON t.{locus}_chain = ch.akc_id
-    JOIN "Epitope" e
-        ON c.epitope = e.akc_id
-    WHERE ch.junction_aa = ANY(%s)
-    """
-    return query
- 
-*/
