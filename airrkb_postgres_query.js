@@ -59,6 +59,12 @@ AKPostgresQuery.formatField = function(name) {
         }
         if ((fields.length == 3) && (fields[2] == 'akc_id')) format_name = 't.' + fields[2];
     }
+    if ((fields[0] == 'tcr') && (fields[1] == 'epitope')) {
+        if (fields.length == 3) format_name = 'e.' + fields[2];
+    }
+    if ((fields[0] == 'tcr') && (fields[1] == 'mhc')) {
+        if (fields.length == 2) format_name = 'c.' + fields[1];
+    }
     if ((fields[0] == 'assay') && (fields.length > 1)) {
         const path = fields.splice(1).map(item => `'${item}'`).join(',');
         format_name = 'qa.assay_object #>> Array[' + path + ']';
@@ -71,7 +77,7 @@ AKPostgresQuery.formatField = function(name) {
 // levels, so we recursively construct the query.
 
 AKPostgresQuery.constructWhereClause = function(filter, error, values) {
-    var context = 'AKPostgresQuery.constructQueryOperation';
+    var context = 'AKPostgresQuery.constructWhereClause';
 
     console.log(filter);
 
@@ -189,7 +195,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
 
     // query operators
     switch(filter['op']) {
-    case '=':
+    case '=': {
         if (content['field'] == undefined) {
             error['message'] = 'missing field for = operator';
             return null;
@@ -206,62 +212,97 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
         values.push(content_value);
         paramIndex = values.length;
         return content_field + ' = ' + `$${paramIndex}`;
-
-    // case '!=':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = 'missing field for != operator';
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = 'missing value for != operator';
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$ne":' + content_value + '}}';
-
-    // case '<':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = 'missing field for < operator';
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = 'missing value for < operator';
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$lt":' + content_value + '}}';
-
-    // case '<=':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = 'missing field for <= operator';
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = 'missing value for <= operator';
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$lte":' + content_value + '}}';
-
-    // case '>':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = 'missing field for > operator';
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = 'missing value for > operator';
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$gt":' + content_value + '}}';
-
-    // case '>=':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = 'missing field for >= operator';
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = 'missing value for >= operator';
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$gte":' + content_value + '}}';
-
+    }
+    case '!=': {
+        if (content['field'] == undefined) {
+            error['message'] = 'missing field for != operator';
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = 'missing value for != operator';
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value);
+        paramIndex = values.length;
+        return content_field + ' <> ' + `$${paramIndex}`;
+    }
+    case '<': {
+        if (content['field'] == undefined) {
+            error['message'] = 'missing field for < operator';
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = 'missing value for < operator';
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value);
+        paramIndex = values.length;
+        return content_field + ' < ' + `$${paramIndex}`;
+    }
+    case '<=': {
+        if (content['field'] == undefined) {
+            error['message'] = 'missing field for <= operator';
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = 'missing value for <= operator';
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value);
+        paramIndex = values.length;
+        return content_field + ' <= ' + `$${paramIndex}`;
+    }
+    case '>': {
+        if (content['field'] == undefined) {
+            error['message'] = 'missing field for > operator';
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = 'missing value for > operator';
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value);
+        paramIndex = values.length;
+        return content_field + ' > ' + `$${paramIndex}`;
+    }
+    case '>=': {
+        if (content['field'] == undefined) {
+            error['message'] = 'missing field for >= operator';
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = 'missing value for >= operator';
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value);
+        paramIndex = values.length;
+        return content_field + ' >= ' + `$${paramIndex}`;
+    }
     // case 'contains':
     //     if (content_type != 'string') {
     //         error['message'] = "'contains' operator only valid for strings";
@@ -294,89 +335,127 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
     //         return '{"' + content['field'] + '": { "$regex":' + escapeString(content_value) + ', "$options": "i"}}';
     //     }
 
-    // case 'is': // is missing
-    // case 'is missing':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = "missing field for 'is missing' operator";
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$exists": false } }';
+    case 'is': // is missing
+    case 'is null':
+    case 'is missing': {
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'is missing' operator";
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        return content_field + ' IS NULL';
+    }
+    case 'not': // is not missing
+    case 'is not null':
+    case 'is not missing': {
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'is not missing' operator";
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        return content_field + ' IS NOT NULL';
+    }
+    case 'in': {
+        if (content_value == undefined) {
+            error['message'] = "missing value for 'in' operator";
+            return null;
+        }
+        if (! (content['value'] instanceof Array)) {
+            error['message'] = "value for 'in' operator is not an array";
+            return null;
+        }
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'in' operator";
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        let exp = content_field + ' IN (';
+        let exp_list = [];
+        for (let i = 0; i < content['value'].length; ++i) {
+            values.push(content['value'][i]);
+            paramIndex = values.length;
+            exp_list.push(`$${paramIndex}`);
+        }
+        return exp + exp_list.join(',') + ')';
+    }
+    case 'exclude': {
+        if (content_value == undefined) {
+            error['message'] = "missing value for 'exclude' operator";
+            return null;
+        }
+        if (! (content['value'] instanceof Array)) {
+            error['message'] = "value for 'exclude' operator is not an array";
+            return null;
+        }
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'exclude' operator";
+            return null;
+        }
+        let content_field = AKPostgresQuery.formatField(content['field']);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        let exp = content_field + ' NOT IN (';
+        let exp_list = [];
+        for (let i = 0; i < content['value'].length; ++i) {
+            values.push(content['value'][i]);
+            paramIndex = values.length;
+            exp_list.push(`$${paramIndex}`);
+        }
+        return exp + exp_list.join(',') + ')';
+    }
+    case 'AND':
+    case 'and': {
+        if (! (content instanceof Array)) {
+            error['message'] = "content for 'and' operator is not an array";
+            return null;
+        }
+        if (content.length < 2) {
+            error['message'] = "content for 'and' operator needs at least 2 elements";
+            return null;
+        }
 
-    // case 'not': // is not missing
-    // case 'is not missing':
-    //     if (content['field'] == undefined) {
-    //         error['message'] = "missing field for 'is not missing' operator";
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$exists": true } }';
+        let exp_list = [];
+        for (let i = 0; i < content.length; ++i) {
+            let exp = AKPostgresQuery.constructWhereClause(content[i], error, values);
+            if (exp == null) return null;
+            exp_list.push(exp);
+        }
+        return exp_list.map(item => `(${item})`).join(' AND ');
+    }
 
-    // case 'in':
-    //     if (content_value == undefined) {
-    //         error['message'] = "missing value for 'in' operator";
-    //         return null;
-    //     }
-    //     if (! (content['value'] instanceof Array)) {
-    //         error['message'] = "value for 'in' operator is not an array";
-    //         return null;
-    //     }
-    //     if (content['field'] == undefined) {
-    //         error['message'] = "missing field for 'in' operator";
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$in":' + content_value + '}}';
+    case 'OR':
+    case 'or': {
+        if (! (content instanceof Array)) {
+            error['message'] = "content for 'or' operator is not an array";
+            return null;
+        }
+        if (content.length < 2) {
+            error['message'] = "content for 'or' operator needs at least 2 elements";
+            return null;
+        }
 
-    // case 'exclude':
-    //     if (content_value == undefined) {
-    //         error['message'] = "missing value for 'exclude' operator";
-    //         return null;
-    //     }
-    //     if (! (content['value'] instanceof Array)) {
-    //         error['message'] = "value for 'exclude' operator is not an array";
-    //         return null;
-    //     }
-    //     if (content['field'] == undefined) {
-    //         error['message'] = "missing field for 'exclude' operator";
-    //         return null;
-    //     }
-    //     return '{"' + content['field'] + '": { "$nin":' + content_value + '}}';
-
-    // case 'and': {
-    //     if (! (content instanceof Array)) {
-    //         error['message'] = "content for 'and' operator is not an array";
-    //         return null;
-    //     }
-    //     if (content.length < 2) {
-    //         error['message'] = "content for 'and' operator needs at least 2 elements";
-    //         return null;
-    //     }
-
-    //     let exp_list = [];
-    //     for (let i = 0; i < content.length; ++i) {
-    //         let exp = AKPostgresQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
-    //         if (exp == null) return null;
-    //         exp_list.push(exp);
-    //     }
-    //     return '{ "$and":[' + exp_list + ']}';
-    // }
-
-    // case 'or': {
-    //     if (! (content instanceof Array)) {
-    //         error['message'] = "content for 'or' operator is not an array";
-    //         return null;
-    //     }
-    //     if (content.length < 2) {
-    //         error['message'] = "content for 'or' operator needs at least 2 elements";
-    //         return null;
-    //     }
-
-    //     let exp_list = [];
-    //     for (let i = 0; i < content.length; ++i) {
-    //         let exp = AKPostgresQuery.constructQueryOperation(airr, schema, content[i], error, check_query_support, disable_contains);
-    //         if (exp == null) return null;
-    //         exp_list.push(exp);
-    //     }
-    //     return '{ "$or":[' + exp_list + ']}';
-    // }
+        let exp_list = [];
+        for (let i = 0; i < content.length; ++i) {
+            let exp = AKPostgresQuery.constructWhereClause(content[i], error, values);
+            if (exp == null) return null;
+            exp_list.push(exp);
+        }
+        return exp_list.map(item => `(${item})`).join(' OR ');
+    }
 
     default:
         error['message'] = 'unknown operator in filters: ' + filter['op'];

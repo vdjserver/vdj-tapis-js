@@ -86,10 +86,11 @@ pgIO.testConnection = async function() {
 }
 
 pgIO.performQueryOperation = async function(filters, error) {
-    let context = 'pgIO.restrictedQueryOperation';
+    let context = 'pgIO.performQueryOperation';
     let pool = pgIO.getPoolConnection();
 
     // TODO: field lists should come from schema
+    // For fields in SQL columns, to avoid name conflict, not for fields in the JSON object
     let select_fields = [];
     let tra_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
     for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
@@ -114,8 +115,9 @@ pgIO.performQueryOperation = async function(filters, error) {
     let values = [];
     let clause = airrkb.constructWhereClause(filters, error, values);
 
-    console.log(clause);
-    console.log(values);
+    config.log.info(context, clause);
+    config.log.info(context, values);
+    if (!clause) return Promise.resolve(null);
 
     if (clause.includes('qa.assay_object')) {
         queryText += ' FROM "QueryAssay" qa';
@@ -142,7 +144,7 @@ pgIO.performQueryOperation = async function(filters, error) {
         queryText += ' WHERE TRUE';
     }
 
-    if (clause) queryText += ' AND (' + clause + ') LIMIT 1000';
+    if (clause) queryText += ' AND (' + clause + ') LIMIT ' + pgSettings.max_results;
     else {
         console.log(error);
         return Promise.resolve(null);
@@ -153,6 +155,21 @@ pgIO.performQueryOperation = async function(filters, error) {
 
     let results = [];
     try {
+        // check cost to avoid inefficient queries
+        // TODO: cost limit should be a config variable
+        const cost = await pool.query("EXPLAIN (FORMAT JSON) " + queryText, values);
+        let query_cost = cost.rows[0];
+        //config.log.info(context, JSON.stringify(query_cost,null,2));
+        if ((query_cost['QUERY PLAN']) && (query_cost['QUERY PLAN'].length > 0)) {
+            let total_cost = query_cost['QUERY PLAN'][0]['Plan']['Total Cost'];
+            config.log.info(context, 'query cost: ' + total_cost);
+            if (total_cost > 1000000) {
+                error['message'] = 'Query is too inefficient to be executed.';
+                return Promise.resolve(null);
+            }
+        }
+
+        // perform query
         const res = await pool.query(queryText, values);
 
         // format for output response
@@ -200,96 +217,5 @@ pgIO.performQueryOperation = async function(filters, error) {
         console.error(err);
         return Promise.reject(err);
     }
-}
-
-pgIO.restrictedQueryOperation = async function(trb_junction_aa, tra_junction_aa) {
-    let context = 'pgIO.restrictedQueryOperation';
-    let pool = pgIO.getPoolConnection();
-
-    // TODO: field lists should come from schema
-    let select_fields = [];
-    let tra_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
-    
-    let trb_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in trb_fields) select_fields.push('chb.' + trb_fields[i] + ' AS trb_chain_' + trb_fields[i]);
-
-    let epitope_fields = ['sequence_aa', 'source_protein', 'source_organism', 'akc_id'];
-    for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
-
-    let values = [];
-    let paramIndex = 1;
-
-    let queryText = 'SELECT ';
-    queryText += select_fields.join(', ');
-    queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
-
-    if (trb_junction_aa) {
-        queryText += ' FROM "TCRpMHCComplex" c';
-        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
-        queryText += ' JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
-        queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
-        queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
-        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
-        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
-        queryText += ' WHERE TRUE';
-
-        values.push(trb_junction_aa);
-        queryText += ` AND chb.junction_aa = $${paramIndex}`
-        ++paramIndex;
-    } else if (tra_junction_aa) {
-        queryText += ' FROM "TCRpMHCComplex" c';
-        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
-        queryText += ' JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
-        queryText += ' LEFT OUTER JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
-        queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
-        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
-        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
-        queryText += ' WHERE TRUE';
-
-        values.push(tra_junction_aa);
-        queryText += ` AND cha.junction_aa = $${paramIndex}`
-        ++paramIndex;
-    } else return Promise.reject(new Error('no junction_aa provided.'));
-
-    config.log.info(context, queryText);
-    let results = [];
-    try {
-        const res = await pool.query(queryText, values);
-
-        // format for output response
-        for (let i in res.rows) {
-            let row = res.rows[i];
-            let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
-	    if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
-            if (row['tra_chain_akc_id']) {
-                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-		if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
-                obj['tcr']['receptor']['tra_chain'] = {};
-                for (let j in tra_fields) obj['tcr']['receptor']['tra_chain'][tra_fields[j]] = row['tra_chain_' + tra_fields[j]];
-            }
-            if (row['trb_chain_akc_id']) {
-                if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-		if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
-                obj['tcr']['receptor']['trb_chain'] = {};
-                for (let j in trb_fields) obj['tcr']['receptor']['trb_chain'][trb_fields[j]] = row['trb_chain_' + trb_fields[j]];
-            }
-            if (row['epitope_akc_id']) {
-                if (!obj['tcr']['epitope']) obj['tcr']['epitope'] = {};
-                for (let j in epitope_fields) obj['tcr']['epitope'][epitope_fields[j]] = row['epitope_' + epitope_fields[j]];
-            }
-            if (row['assay_object']) {
-                obj['assay'] = row['assay_object'];
-            }
-            results.push(obj);
-        }
-
-        config.log.info(context, 'Returning ' + results.length + ' query results.');
-        return Promise.resolve(results);
-    } catch (err) {
-        console.error(err);
-        return Promise.reject(err);
-    }
-
 }
 
