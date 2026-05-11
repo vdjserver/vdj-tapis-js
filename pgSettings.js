@@ -34,7 +34,9 @@ var pgSettings = {
     dbname: process.env.POSTGRES_DB,
     username: process.env.POSTGRES_USER,
     userSecret: process.env.POSTGRES_PASSWORD,
-    url: null
+    url: null,
+    query_timeout: 180000,
+    max_results: 10000
 };
 
 module.exports = pgSettings;
@@ -45,6 +47,8 @@ pgSettings.set_config = function(config) {
     if (config) {
         config.log.info(context, 'pgSettings config object set for app: ' + config.name, true);
         pgSettings.config = config;
+        config.info.query_timeout = pgSettings.query_timeout;
+        config.info.max_results = pgSettings.max_results;
     }
 
     if (!pgSettings.port) pgSettings.port = 5432;
@@ -71,6 +75,7 @@ pgSettings.pg_connection = function() {
         host: pgSettings.hostname,
         database: pgSettings.dbname,
         password: pgSettings.userSecret,
-        port: pgSettings.port
+        port: pgSettings.port,
+        statement_timeout: pgSettings.query_timeout
     };
 }
