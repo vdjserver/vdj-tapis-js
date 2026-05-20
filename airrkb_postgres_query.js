@@ -46,9 +46,29 @@ var config = tapisSettings.config;
 
 var pgIO = require('vdj-tapis-js/pgIO');
 
-AKPostgresQuery.formatField = function(name) {
+AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
     let format_name = null;
     let fields = name.split('.');
+
+    // field is in the JSON object
+    if (fields[0] == 'assay') {
+        if (fields.length == 1) {
+            format_name = 'qa.assay_object';
+            return format_name;
+        } else {
+            if (stay_jsonb) {
+                const path = fields.splice(1).map(item => `'${item}'`).join('->>');
+                format_name = 'qa.assay_object->>' + path;
+                return format_name;
+            } else {
+                const path = fields.splice(1).map(item => `'${item}'`).join(',');
+                format_name = 'qa.assay_object #>> Array[' + path + ']';
+                return format_name;
+            }
+        }
+    }
+
+    // field is a table column
     if (fields.length == 1) return name;
     if ((fields[0] == 'tcr') && (fields[1] == 'receptor')) {
         if (fields.length == 4) {
@@ -64,10 +84,6 @@ AKPostgresQuery.formatField = function(name) {
     }
     if ((fields[0] == 'tcr') && (fields[1] == 'mhc')) {
         if (fields.length == 2) format_name = 'c.' + fields[1];
-    }
-    if ((fields[0] == 'assay') && (fields.length > 1)) {
-        const path = fields.splice(1).map(item => `'${item}'`).join(',');
-        format_name = 'qa.assay_object #>> Array[' + path + ']';
     }
     return format_name;
 }
@@ -303,38 +319,27 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
         paramIndex = values.length;
         return content_field + ' >= ' + `$${paramIndex}`;
     }
-    // case 'contains':
-    //     if (content_type != 'string') {
-    //         error['message'] = "'contains' operator only valid for strings";
-    //         return null;
-    //     }
-    //     if (content['field'] == undefined) {
-    //         error['message'] = "missing field for 'contains' operator";
-    //         return null;
-    //     }
-    //     if (content_value == undefined) {
-    //         error['message'] = "missing value for 'contains' operator";
-    //         return null;
-    //     }
+    case 'contains': {
+        if (content_type != 'string') {
+            error['message'] = "'contains' operator only valid for strings";
+            return null;
+        }
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'contains' operator";
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = "missing value for 'contains' operator";
+            return null;
+        }
 
-    //     // VDJServer optimization for substring searches on junction_aa
-    //     if (content['field'] == 'junction_aa') {
-    //         if (content['value'].length < 4) {
-    //             error['message'] = "value for 'contains' operator on 'junction_aa' field is too small, length is ("
-    //                 + content['value'].length + ") characters, minimum is 4.";
-    //             return null;
-    //         } else {
-    //             return '{"vdjserver_junction_suffixes": {"$regex": "^' + content['value'] + '"}}';
-    //         }
-    //     }
-
-    //     if (disable_contains) {
-    //         error['message'] = "'contains' operator not supported for '" + content['field'] + "' field.";
-    //         return null;
-    //     } else {
-    //         return '{"' + content['field'] + '": { "$regex":' + escapeString(content_value) + ', "$options": "i"}}';
-    //     }
-
+        let content_field = AKPostgresQuery.formatField(content['field'], true);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        return "to_tsvector('english', " + content_field + ") @@ to_tsquery('english', '" + content_value + "')";
+    }
     case 'is': // is missing
     case 'is null':
     case 'is missing': {
