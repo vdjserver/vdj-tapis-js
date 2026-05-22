@@ -176,28 +176,28 @@ pgIO.performQueryOperation = async function(filters, error) {
         for (let i in res.rows) {
             let row = res.rows[i];
             let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
-    	    if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
+            if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
             if (row['tra_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-	        	if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['tra_chain'] = {};
                 for (let j in tra_fields) obj['tcr']['receptor']['tra_chain'][tra_fields[j]] = row['tra_chain_' + tra_fields[j]];
             }
             if (row['trb_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['trb_chain'] = {};
                 for (let j in trb_fields) obj['tcr']['receptor']['trb_chain'][trb_fields[j]] = row['trb_chain_' + trb_fields[j]];
             }
             if (row['trg_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['trg_chain'] = {};
                 for (let j in trg_fields) obj['tcr']['receptor']['trg_chain'][trg_fields[j]] = row['trg_chain_' + trg_fields[j]];
             }
             if (row['trd_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
-		        if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
+                if (row['receptor_akc_id']) obj['tcr']['receptor']['akc_id'] = row['receptor_akc_id'];
                 obj['tcr']['receptor']['trd_chain'] = {};
                 for (let j in trd_fields) obj['tcr']['receptor']['trd_chain'][trd_fields[j]] = row['trd_chain_' + trd_fields[j]];
             }
