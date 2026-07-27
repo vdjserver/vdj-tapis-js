@@ -144,7 +144,7 @@ pgIO.performQueryOperation = async function(filters, error) {
         queryText += ' WHERE TRUE';
     }
 
-    if (clause) queryText += ' AND (' + clause + ') LIMIT ' + pgSettings.max_results;
+    if (clause) queryText += ' AND (' + clause + ') LIMIT ' + (pgSettings.max_results + 1);
     else {
         console.log(error);
         return Promise.resolve(null);
@@ -153,6 +153,7 @@ pgIO.performQueryOperation = async function(filters, error) {
     // perform the query
     console.log(queryText);
 
+    let partial = false;
     let results = [];
     try {
         // check cost to avoid inefficient queries
@@ -163,17 +164,24 @@ pgIO.performQueryOperation = async function(filters, error) {
         if ((query_cost['QUERY PLAN']) && (query_cost['QUERY PLAN'].length > 0)) {
             let total_cost = query_cost['QUERY PLAN'][0]['Plan']['Total Cost'];
             config.log.info(context, 'query cost: ' + total_cost);
-            if (total_cost > 1000000) {
-                error['message'] = 'Query is too inefficient to be executed.';
-                return Promise.resolve(null);
-            }
+            // if (total_cost > 1000000) {
+            //     error['message'] = 'Query is too inefficient to be executed.';
+            //     return Promise.resolve(null);
+            // }
         }
 
         // perform query
         const res = await pool.query(queryText, values);
 
+        // simple hack to check partial results, ask for max + 1
+        console.log(res.rows.length);
+        if (res.rows.length == (pgSettings.max_results + 1)) partial = true;
+        console.log(partial);
+
         // format for output response
         for (let i in res.rows) {
+            if (i == pgSettings.max_results) break;
+
             let row = res.rows[i];
             let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
     	    if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
@@ -212,7 +220,7 @@ pgIO.performQueryOperation = async function(filters, error) {
         }
 
         config.log.info(context, 'Returning ' + results.length + ' query results.');
-        return Promise.resolve(results);
+        return Promise.resolve({ partial: partial, results: results });
     } catch (err) {
         console.error(err);
         return Promise.reject(err);

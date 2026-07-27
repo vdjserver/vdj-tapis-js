@@ -78,6 +78,10 @@ AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
             if (fields[2] == 'trd_chain') format_name = 'chd.' + fields[3];
         }
         if ((fields.length == 3) && (fields[2] == 'akc_id')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'tra_chain')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'trb_chain')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'trg_chain')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'trd_chain')) format_name = 't.' + fields[2];
     }
     if ((fields[0] == 'tcr') && (fields[1] == 'epitope')) {
         if (fields.length == 3) format_name = 'e.' + fields[2];
@@ -339,6 +343,29 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             return null;
         }
         return "to_tsvector('english', " + content_field + ") @@ to_tsquery('english', '" + content_value + "')";
+    }
+    case 'prefix': {
+        if (content_type != 'string') {
+            error['message'] = "'prefix' operator only valid for strings";
+            return null;
+        }
+        if (content['field'] == undefined) {
+            error['message'] = "missing field for 'prefix' operator";
+            return null;
+        }
+        if (content_value == undefined) {
+            error['message'] = "missing value for 'prefix' operator";
+            return null;
+        }
+
+        let content_field = AKPostgresQuery.formatField(content['field'], true);
+        if (content_field == null) {
+            error['message'] = 'invalid field: ' + content['field'];
+            return null;
+        }
+        values.push(content_value + '%');
+        paramIndex = values.length;
+        return content_field + ' LIKE ' + `$${paramIndex}`;
     }
     case 'is': // is missing
     case 'is null':
