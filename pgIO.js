@@ -85,31 +85,32 @@ pgIO.testConnection = async function() {
     }
 }
 
-pgIO.performQueryOperation = async function(filters, error) {
+pgIO.performQueryOperation = async function(filters, error, count_only=false) {
     let context = 'pgIO.performQueryOperation';
     let pool = pgIO.getPoolConnection();
 
     // TODO: field lists should come from schema
-    // For fields in SQL columns, to avoid name conflict, not for fields in the JSON object
     let select_fields = [];
     let tra_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
-    
     let trb_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in trb_fields) select_fields.push('chb.' + trb_fields[i] + ' AS trb_chain_' + trb_fields[i]);
-
     let trg_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
-
     let trd_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
-
     let epitope_fields = ['sequence_aa', 'source_protein', 'source_organism', 'akc_id'];
-    for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
 
     let queryText = 'SELECT ';
-    queryText += select_fields.join(', ');
-    queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
+    if (count_only) {
+        queryText += ' COUNT(*) ';
+    } else {
+        // For fields in SQL columns, to avoid name conflict, not for fields in the JSON object
+        for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
+        for (let i in trb_fields) select_fields.push('chb.' + trb_fields[i] + ' AS trb_chain_' + trb_fields[i]);
+        for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
+        for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
+        for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
+
+        queryText += select_fields.join(', ');
+        queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
+    }
 
     // construct where clause
     let values = [];
@@ -144,7 +145,11 @@ pgIO.performQueryOperation = async function(filters, error) {
         queryText += ' WHERE TRUE';
     }
 
-    if (clause) queryText += ' AND (' + clause + ') LIMIT ' + (pgSettings.max_results + 1);
+    if (clause) 
+        if (count_only)
+            queryText += ' AND (' + clause + ')';
+        else
+            queryText += ' AND (' + clause + ') LIMIT ' + (pgSettings.max_results + 1);
     else {
         console.log(error);
         return Promise.resolve(null);
@@ -156,22 +161,33 @@ pgIO.performQueryOperation = async function(filters, error) {
     let partial = false;
     let results = [];
     try {
-        // check cost to avoid inefficient queries
-        // TODO: cost limit should be a config variable
-        const cost = await pool.query("EXPLAIN (FORMAT JSON) " + queryText, values);
-        let query_cost = cost.rows[0];
-        //config.log.info(context, JSON.stringify(query_cost,null,2));
-        if ((query_cost['QUERY PLAN']) && (query_cost['QUERY PLAN'].length > 0)) {
-            let total_cost = query_cost['QUERY PLAN'][0]['Plan']['Total Cost'];
-            config.log.info(context, 'query cost: ' + total_cost);
-            // if (total_cost > 1000000) {
-            //     error['message'] = 'Query is too inefficient to be executed.';
-            //     return Promise.resolve(null);
-            // }
+        if (! count_only) {
+            // check cost to avoid inefficient queries
+            // TODO: cost limit should be a config variable
+            const cost = await pool.query("EXPLAIN (FORMAT JSON) " + queryText, values);
+            let query_cost = cost.rows[0];
+            //config.log.info(context, JSON.stringify(query_cost,null,2));
+            if ((query_cost['QUERY PLAN']) && (query_cost['QUERY PLAN'].length > 0)) {
+                let total_cost = query_cost['QUERY PLAN'][0]['Plan']['Total Cost'];
+                config.log.info(context, 'query cost: ' + total_cost);
+                // if (total_cost > 1000000) {
+                //     error['message'] = 'Query is too inefficient to be executed.';
+                //     return Promise.resolve(null);
+                // }
+            }
         }
 
         // perform query
-        const res = await pool.query(queryText, values);
+        try {
+            const res = await pool.query(queryText, values);
+        } catch (err) {
+            if (err.message.includes('timeout')) return Promise.reject({ status: 'timeout', message: 'Query timeout.' });
+            else return Promise.reject({ status: 'error', message: err.message });
+        }
+
+        if (count_only) {
+            return Promise.resolve(res.rows[0]);
+        }
 
         // simple hack to check partial results, ask for max + 1
         console.log(res.rows.length);

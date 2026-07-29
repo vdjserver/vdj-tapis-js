@@ -82,6 +82,8 @@ AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
         if ((fields.length == 3) && (fields[2] == 'trb_chain')) format_name = 't.' + fields[2];
         if ((fields.length == 3) && (fields[2] == 'trg_chain')) format_name = 't.' + fields[2];
         if ((fields.length == 3) && (fields[2] == 'trd_chain')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'ab_paired')) format_name = 't.' + fields[2];
+        if ((fields.length == 3) && (fields[2] == 'gd_paired')) format_name = 't.' + fields[2];
     }
     if ((fields[0] == 'tcr') && (fields[1] == 'epitope')) {
         if (fields.length == 3) format_name = 'e.' + fields[2];
