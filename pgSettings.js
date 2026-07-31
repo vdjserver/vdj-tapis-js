@@ -36,7 +36,9 @@ var pgSettings = {
     userSecret: process.env.POSTGRES_PASSWORD,
     url: null,
     query_timeout: 180000,
-    max_results: 10000
+    max_results: 10000,
+    download_timeout: 600000,
+    max_download_results: 1000000
 };
 
 module.exports = pgSettings;
@@ -49,6 +51,8 @@ pgSettings.set_config = function(config) {
         pgSettings.config = config;
         config.info.query_timeout = pgSettings.query_timeout;
         config.info.max_results = pgSettings.max_results;
+        config.info.download_timeout = pgSettings.download_timeout;
+        config.info.max_download_results = pgSettings.max_download_results;
     }
 
     if (!pgSettings.port) pgSettings.port = 5432;
@@ -77,5 +81,16 @@ pgSettings.pg_connection = function() {
         password: pgSettings.userSecret,
         port: pgSettings.port,
         statement_timeout: pgSettings.query_timeout
+    };
+}
+
+pgSettings.pg_download_connection = function() {
+    return {
+        user: pgSettings.username,
+        host: pgSettings.hostname,
+        database: pgSettings.dbname,
+        password: pgSettings.userSecret,
+        port: pgSettings.port,
+        statement_timeout: pgSettings.download_timeout
     };
 }

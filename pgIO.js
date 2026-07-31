@@ -53,7 +53,7 @@ var csv = require('csv-parser');
 var fs = require('fs');
 const zlib = require('zlib');
 
-// get connection
+// interactive query connection pool
 var pg_pool = null;
 pgIO.getPoolConnection = function() {
 
@@ -71,6 +71,24 @@ pgIO.endPoolConnection = function() {
     }
 }
 
+// download connection pool
+var pg_download_pool = null;
+pgIO.getDownloadPoolConnection = function() {
+
+    if (!pg_download_pool) {
+        const credentials = pgSettings.pg_download_connection();
+        pg_download_pool = new Pool(credentials);
+    }
+    return pg_download_pool;
+}
+
+pgIO.endDownloadPoolConnection = function() {
+    if (pg_download_pool) {
+        pg_download_pool.end();
+        pg_download_pool = null;
+    }
+}
+
 // test connection
 pgIO.testConnection = async function() {
     let pool = pgIO.getPoolConnection();
@@ -85,12 +103,16 @@ pgIO.testConnection = async function() {
     }
 }
 
-pgIO.performQueryOperation = async function(filters, error, count_only=false) {
+pgIO.performQueryOperation = async function(filters, error, count_only=false, download_row_handler) {
     let context = 'pgIO.performQueryOperation';
-    let pool = pgIO.getPoolConnection();
+    let download_mode = (count_only || download_row_handler);
+    let pool;
+    if (download_mode) pool = pgIO.getDownloadPoolConnection();
+    else pool = pgIO.getPoolConnection();
 
     // TODO: field lists should come from schema
     let select_fields = [];
+    let header_fields = [];
     let tra_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
     let trb_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
     let trg_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
@@ -107,6 +129,13 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
         for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
         for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
         for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
+
+        // For headers in output file
+        for (let i in tra_fields) header_fields.push('tra_chain_' + tra_fields[i]);
+        for (let i in trb_fields) header_fields.push('trb_chain_' + trb_fields[i]);
+        for (let i in trg_fields) header_fields.push('trg_chain_' + trg_fields[i]);
+        for (let i in trd_fields) header_fields.push('trd_chain_' + trd_fields[i]);
+        for (let i in epitope_fields) header_fields.push('epitope_' + epitope_fields[i]);
 
         queryText += select_fields.join(', ');
         queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
@@ -146,7 +175,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
     }
 
     if (clause) 
-        if (count_only)
+        if (download_mode)
             queryText += ' AND (' + clause + ')';
         else
             queryText += ' AND (' + clause + ') LIMIT ' + (pgSettings.max_results + 1);
@@ -161,7 +190,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
     let partial = false;
     let results = [];
     try {
-        if (! count_only) {
+        if (! download_mode) {
             // check cost to avoid inefficient queries
             // TODO: cost limit should be a config variable
             const cost = await pool.query("EXPLAIN (FORMAT JSON) " + queryText, values);
@@ -178,12 +207,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
         }
 
         // perform query
-        try {
-            const res = await pool.query(queryText, values);
-        } catch (err) {
-            if (err.message.includes('timeout')) return Promise.reject({ status: 'timeout', message: 'Query timeout.' });
-            else return Promise.reject({ status: 'error', message: err.message });
-        }
+        const res = await pool.query(queryText, values);
 
         if (count_only) {
             return Promise.resolve(res.rows[0]);
@@ -196,9 +220,15 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
 
         // format for output response
         for (let i in res.rows) {
+            let row = res.rows[i];
+
+            if (download_mode) {
+                download_row_handler(header_fields, row);
+                continue;
+            }
+
             if (i == pgSettings.max_results) break;
 
-            let row = res.rows[i];
             let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
             if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
             if (row['tra_chain_akc_id']) {
@@ -235,11 +265,70 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false) {
             results.push(obj);
         }
 
-        config.log.info(context, 'Returning ' + results.length + ' query results.');
-        return Promise.resolve({ partial: partial, results: results });
+        if (download_mode) return Promise.resolve();
+        else {
+            config.log.info(context, 'Returning ' + results.length + ' query results.');
+            return Promise.resolve({ partial: partial, results: results });
+        }
     } catch (err) {
-        console.error(err);
-        return Promise.reject(err);
+        if (err.message.includes('timeout')) return Promise.reject({ status: 'timeout', message: 'Query timeout.' });
+        else return Promise.reject({ status: 'error', message: err.message });
     }
 }
 
+pgIO.performQueryToFile = async function(filters, filename, format) {
+    var context = 'pgIO.performQueryToFile';
+
+    return new Promise(async function(resolve, reject) {
+
+        var writable = fs.createWriteStream(filename)
+            .on('error', function(e) { let msg = config.log.error(context, 'caught error: ' + e); return reject(new Error(msg)); });
+    
+        writable.on('finish', function() {
+            config.log.info(context, 'finish of write stream');
+            return resolve(cnt);
+        });
+    
+        // we rely on closure
+        var first = true;
+        var cnt = 0;
+        var row_handler = function(headers, row) {
+            cnt += 1;
+
+            // write data
+            switch (format) {
+                case 'tsv': {
+                    // write headers
+                    if (first) {
+                        //console.log(headers);
+                        //console.log(row);
+                        writable.write(headers.join('\t'));
+                        writable.write('\n');
+                    }
+
+                    // write row
+                    let vals = [];
+                    for (let i = 0; i < headers.length; ++i) {
+                        let p = headers[i];
+                        //if (config.debug) console.log(p, entry[p]);
+                        if (row[p] == undefined) vals.push('');
+                        else vals.push(row[p]);
+                    }
+                    writable.write(vals.join('\t'));
+                    writable.write('\n');
+                    break;
+                }
+            }
+            first = false;
+        }
+
+        var error = { message: '' };
+        await pgIO.performQueryOperation(filters, error, false, row_handler)
+            .catch(function(error) {
+                return reject(error);
+            });
+
+        // the finish event will resolve the promise
+        writable.end();
+    });    
+}
