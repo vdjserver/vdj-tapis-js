@@ -164,7 +164,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
 
     } else {
         queryText += ' FROM "TCRpMHCComplex" c';
-        queryText += ' LEFT OUTER JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
+        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
         queryText += ' LEFT OUTER JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
         queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
         queryText += ' LEFT OUTER JOIN "Chain" chg ON t.trg_chain = chg.akc_id';
