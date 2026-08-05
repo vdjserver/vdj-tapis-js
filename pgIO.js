@@ -131,11 +131,12 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
         for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
 
         // For headers in output file
+        header_fields.push('documents');
+        for (let i in epitope_fields) header_fields.push('epitope_' + epitope_fields[i]);
         for (let i in tra_fields) header_fields.push('tra_chain_' + tra_fields[i]);
         for (let i in trb_fields) header_fields.push('trb_chain_' + trb_fields[i]);
         for (let i in trg_fields) header_fields.push('trg_chain_' + trg_fields[i]);
         for (let i in trd_fields) header_fields.push('trd_chain_' + trd_fields[i]);
-        for (let i in epitope_fields) header_fields.push('epitope_' + epitope_fields[i]);
 
         queryText += select_fields.join(', ');
         queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
@@ -301,7 +302,7 @@ pgIO.performQueryToFile = async function(filters, filename, format) {
                     // write headers
                     if (first) {
                         //console.log(headers);
-                        //console.log(row);
+                        //console.log(row['assay_object']);
                         writable.write(headers.join('\t'));
                         writable.write('\n');
                     }
@@ -311,8 +312,14 @@ pgIO.performQueryToFile = async function(filters, filename, format) {
                     for (let i = 0; i < headers.length; ++i) {
                         let p = headers[i];
                         //if (config.debug) console.log(p, entry[p]);
-                        if (row[p] == undefined) vals.push('');
-                        else vals.push(row[p]);
+                        if (p == 'documents') {
+                            if (row['assay_object']['investigation']['documents']) {
+                                vals.push(row['assay_object']['investigation']['documents'].join(','));
+                            } else vals.push('');
+                        } else {
+                            if (row[p] == undefined) vals.push('');
+                            else vals.push(row[p]);
+                        }
                     }
                     writable.write(vals.join('\t'));
                     writable.write('\n');
