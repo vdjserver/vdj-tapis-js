@@ -3,12 +3,17 @@
 //
 // pgSettings.js
 // Postgresql configuration settings
+// This is shared between VDJServer and AIRR Knowledge
 //
 // VDJServer Community Data Portal
 // ADC API for VDJServer
 // https://vdjserver.org
 //
-// Copyright (C) 2024 The University of Texas Southwestern Medical Center
+// AIRR Knowledge
+// AK API
+// https://airr-knowledge.org
+//
+// Copyright (C) 2026 The University of Texas Southwestern Medical Center
 //
 // Author: Scott Christley <scott.christley@utsouthwestern.edu>
 //
@@ -26,25 +31,39 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-// local DB, use tapisSettings for Tapis DB
+// Postgresql Settings
 var pgSettings = {
-    // Postgresql Settings
+    // AIRR Knowledge
+    // ADC API query
     hostname: process.env.POSTGRES_HOST,
     port: process.env.POSTGRES_PORT,
     dbname: process.env.POSTGRES_DB,
     username: process.env.POSTGRES_USER,
     userSecret: process.env.POSTGRES_PASSWORD,
     url: null,
-    query_timeout: 180000,
+
+    // AIRR Knowledge
+    query_timeout: Number(process.env.POSTGRES_QUERY_TIMEOUT),
     max_results: 10000,
     download_timeout: 600000,
-    max_download_results: 1000000
+    max_download_results: 1000000,
+
+    // ADC API
+    // load database
+    load_hostname: process.env.POSTGRES_LOAD_HOST,
+    load_port: process.env.POSTGRES_LOAD_PORT,
+    load_dbname: process.env.POSTGRES_LOAD_DB,
+    load_username: process.env.POSTGRES_LOAD_USER,
+    load_userSecret: process.env.POSTGRES_LOAD_PASSWORD,
+    load_url: null
 };
 
 module.exports = pgSettings;
 
 pgSettings.set_config = function(config) {
     var context = 'postgres';
+
+    if (!pgSettings.query_timeout) pgSettings.query_timeout = 180000; // 3 min default
 
     if (config) {
         config.log.info(context, 'pgSettings config object set for app: ' + config.name, true);
@@ -70,6 +89,25 @@ pgSettings.set_config = function(config) {
     config.log.info(context, 'Using Postgres DB: ' + pgSettings.dbname, true);
     config.log.info(context, 'Using Postgres username: ' + pgSettings.username, true);
 
+    if (pgSettings.load_dbname) {
+        if (!pgSettings.load_port) pgSettings.load_port = 5432;
+        if (pgSettings.load_username) {
+            pgSettings.load_url = 'postgres://'
+                + pgSettings.load_username + ':' + pgSettings.load_userSecret + '@'
+                + pgSettings.load_hostname + ':' + pgSettings.load_port + '/' + pgSettings.load_dbname;
+        } else {
+            pgSettings.load_url = 'postgres://'
+                + pgSettings.load_hostname + ':' + pgSettings.load_port + '/' + pgSettings.load_dbname;
+        }
+
+        config.log.info(context, 'Using Postgres LOAD host: ' + pgSettings.hostname, true);
+        config.log.info(context, 'Using Postgres LOAD port: ' + pgSettings.port, true);
+        config.log.info(context, 'Using Postgres LOAD DB: ' + pgSettings.dbname, true);
+        config.log.info(context, 'Using Postgres LOAD username: ' + pgSettings.username, true);
+    } else {
+        config.log.info(context, 'Postgres LOAD database not defined.', true);
+    }
+
     return pgSettings;
 }
 
@@ -92,5 +130,15 @@ pgSettings.pg_download_connection = function() {
         password: pgSettings.userSecret,
         port: pgSettings.port,
         statement_timeout: pgSettings.download_timeout
+    };
+}
+
+pgSettings.pg_load_connection = function() {
+    return {
+        user: pgSettings.load_username,
+        host: pgSettings.load_hostname,
+        database: pgSettings.load_dbname,
+        password: pgSettings.load_userSecret,
+        port: pgSettings.load_port
     };
 }

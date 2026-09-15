@@ -2,10 +2,10 @@
 'use strict';
 
 //
-// pgIO.js
+// adc_pgIO.js
 // Functions for direct access to Postgresql
 //
-// These functions should be relatively agnostic to the application.
+// These functions are customized for the ADC API
 //
 // VDJServer Analysis Portal
 // VDJ API Service
@@ -43,7 +43,7 @@ var ServiceAccount = tapisIO.serviceAccount;
 var GuestAccount = tapisIO.guestAccount;
 var webhookIO = require('vdj-tapis-js/webhookIO');
 
-var airrkb = require('vdj-tapis-js/airrkb_postgres_query');
+var adc_pg = require('vdj-tapis-js/adc_postgres_query');
 
 // Node Libraries
 var _ = require('underscore');
@@ -148,8 +148,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
     let trb_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
     let trg_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
     let trd_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_call', 'd_call', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
-    let antigen_fields = ['source_molecule', 'source_species', 'akc_id'];
-    let epitope_fields = ['sequence_aa', 'modifications', 'akc_id'];
+    let epitope_fields = ['sequence_aa', 'source_protein', 'source_organism', 'akc_id'];
 
     let queryText = 'SELECT ';
     if (count_only) {
@@ -158,9 +157,8 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
         // For fields in SQL columns, to avoid name conflict, not for fields in the JSON object
         for (let i in tra_fields) select_fields.push('cha.' + tra_fields[i] + ' AS tra_chain_' + tra_fields[i]);
         for (let i in trb_fields) select_fields.push('chb.' + trb_fields[i] + ' AS trb_chain_' + trb_fields[i]);
-        //for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
-        //for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
-        for (let i in antigen_fields) select_fields.push('a.' + antigen_fields[i] + ' AS antigen_' + antigen_fields[i]);
+        for (let i in trg_fields) select_fields.push('chg.' + trg_fields[i] + ' AS trg_chain_' + trg_fields[i]);
+        for (let i in trd_fields) select_fields.push('chd.' + trd_fields[i] + ' AS trd_chain_' + trd_fields[i]);
         for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
 
         // For headers in output file
@@ -172,13 +170,12 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
         for (let i in trd_fields) header_fields.push('trd_chain_' + trd_fields[i]);
 
         queryText += select_fields.join(', ');
-        queryText += ', c.akc_id AS complex_akc_id, r.akc_id AS receptor_akc_id, qa.assay_object';
-        //queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
+        queryText += ', c.akc_id AS complex_akc_id, t.akc_id AS receptor_akc_id, qa.assay_object';
     }
 
     // construct where clause
     let values = [];
-    let clause = airrkb.constructWhereClause(filters, error, values);
+    let clause = adc_pg.constructWhereClause(filters, error, values);
 
     config.log.info(context, clause);
     config.log.info(context, values);
@@ -197,14 +194,15 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
         queryText += ' WHERE TRUE';
 
     } else {
-        queryText += ' FROM "AlphaBetaReceptorComposite" c';
-        queryText += ' LEFT OUTER JOIN "BetaChain" chb ON c.trb_chain = chb.hash_infer_vdj_sequence_aa';
-        queryText += ' LEFT OUTER JOIN "AlphaChain" cha ON c.tra_chain = cha.hash_infer_vdj_sequence_aa';
-        queryText += ' LEFT OUTER JOIN "Antigen" a ON c.antigen = a.akc_id';
+        queryText += ' FROM "TCRpMHCComplex" c';
+        queryText += ' JOIN "TCellReceptor" t ON c.tcr = t.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chb ON t.trb_chain = chb.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" cha ON t.tra_chain = cha.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chg ON t.trg_chain = chg.akc_id';
+        queryText += ' LEFT OUTER JOIN "Chain" chd ON t.trd_chain = chd.akc_id';
         queryText += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
-        queryText += ' JOIN "TCRpMHCComplex" r ON c.tcr_complex = r.akc_id';
-        queryText += ' JOIN "Assay_receptor_composites" arc ON arc.receptor_composites_akc_id = c.akc_id';
-        queryText += ' JOIN "QueryAssay" qa ON arc.assay_akc_id = qa.akc_id';
+        queryText += ' JOIN "Assay_tcr_complexes" atc ON atc.tcr_complexes_akc_id = c.akc_id';
+        queryText += ' JOIN "QueryAssay" qa ON atc.assay_akc_id = qa.akc_id';
         queryText += ' WHERE TRUE';
     }
 
@@ -252,16 +250,9 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
         if (res.rows.length == (pgSettings.max_results + 1)) partial = true;
         console.log(partial);
 
-        // eliminate multiple chains
-        var duplicates = {};
-
         // format for output response
         for (let i in res.rows) {
             let row = res.rows[i];
-
-            // eliminate multiple chains
-            //if (duplicates[row['complex_akc_id']]) continue;
-            //else duplicates[row['complex_akc_id']] = row;
 
             if (download_mode) {
                 download_row_handler(header_fields, row);
@@ -270,7 +261,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
 
             if (i == pgSettings.max_results) break;
 
-            let obj = { tcr: { receptor: null, epitope: null, mhc: null }, assay: null };
+            let obj = { tcr: { receptor: null, epitope: null, mhc: null }, bcr: null, assay: null };
             if (row['complex_akc_id']) obj['akc_id'] = row['complex_akc_id'];
             if (row['tra_chain_akc_id']) {
                 if (!obj['tcr']['receptor']) obj['tcr']['receptor'] = {};
