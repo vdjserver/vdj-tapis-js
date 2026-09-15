@@ -2,10 +2,10 @@
 'use strict';
 
 //
-// pgIO.js
+// adc_pgIO.js
 // Functions for direct access to Postgresql
 //
-// These functions should be relatively agnostic to the application.
+// These functions are customized for the ADC API
 //
 // VDJServer Analysis Portal
 // VDJ API Service
@@ -43,7 +43,7 @@ var ServiceAccount = tapisIO.serviceAccount;
 var GuestAccount = tapisIO.guestAccount;
 var webhookIO = require('vdj-tapis-js/webhookIO');
 
-var airrkb = require('vdj-tapis-js/airrkb_postgres_query');
+var adc_pg = require('vdj-tapis-js/adc_postgres_query');
 
 // Node Libraries
 var _ = require('underscore');
@@ -175,7 +175,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
 
     // construct where clause
     let values = [];
-    let clause = airrkb.constructWhereClause(filters, error, values);
+    let clause = adc_pg.constructWhereClause(filters, error, values);
 
     config.log.info(context, clause);
     config.log.info(context, values);

@@ -105,7 +105,7 @@ pgSettings.set_config = function(config) {
         config.log.info(context, 'Using Postgres LOAD DB: ' + pgSettings.dbname, true);
         config.log.info(context, 'Using Postgres LOAD username: ' + pgSettings.username, true);
     } else {
-        config.log.info(context, 'Postgres LOAD database not defined.');
+        config.log.info(context, 'Postgres LOAD database not defined.', true);
     }
 
     return pgSettings;
@@ -130,5 +130,15 @@ pgSettings.pg_download_connection = function() {
         password: pgSettings.userSecret,
         port: pgSettings.port,
         statement_timeout: pgSettings.download_timeout
+    };
+}
+
+pgSettings.pg_load_connection = function() {
+    return {
+        user: pgSettings.load_username,
+        host: pgSettings.load_hostname,
+        database: pgSettings.load_dbname,
+        password: pgSettings.load_userSecret,
+        port: pgSettings.load_port
     };
 }
