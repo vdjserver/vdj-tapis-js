@@ -2,10 +2,11 @@
 'use strict';
 
 //
-// pgIO.js
-// Functions for direct access to Postgresql
+// airrkb_pgIO.js
+// Functions for direct access to Postgresql for AIRR Knowledge
 //
-// These functions should be relatively agnostic to the application.
+// AIRR Knowledge
+// https://airr-knowledge.org
 //
 // VDJServer Analysis Portal
 // VDJ API Service
@@ -89,39 +90,8 @@ pgIO.endDownloadPoolConnection = function() {
     }
 }
 
-// load connection pool
-var pg_load_pool = null;
-pgIO.getLoadPoolConnection = function() {
-
-    if (!pg_load_pool) {
-        const credentials = pgSettings.pg_load_connection();
-        pg_load_pool = new Pool(credentials);
-    }
-    return pg_load_pool;
-}
-
-pgIO.endLoadPoolConnection = function() {
-    if (pg_load_pool) {
-        pg_load_pool.end();
-        pg_load_pool = null;
-    }
-}
-
 // test connection
 pgIO.testConnection = async function() {
-    let pool = pgIO.getPoolConnection();
-
-    try {
-        const res = await pool.query("SELECT NOW() as now");
-        console.log("Current time with pool:", res.rows[0].now);
-        Promise.resolve();
-    } catch (err) {
-        console.error("Database error", err);
-        Promise.reject(err);
-    }
-}
-
-pgIO.testLoadConnection = async function() {
     let pool = pgIO.getPoolConnection();
 
     try {
