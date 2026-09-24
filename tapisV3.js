@@ -200,7 +200,39 @@ tapisV3.getOAuthToken = async function(client, code) {
             'Content-Type': 'application/json'
         }
     };
-    console.log(requestSettings);
+    //console.log(requestSettings);
+
+    var msg = null;
+    var data = await tapisV3.sendRequest(requestSettings)
+        .catch(function(error) {
+            return Promise.reject(error);
+        });
+
+    if (data.status != 'success') {
+        msg = 'Tapis token response returned an error: ' + data.message;
+        return Promise.reject(new Error(msg));
+    }
+
+    return Promise.resolve(data.result);
+};
+
+tapisV3.refreshOAuthToken = async function(client, refresh_token) {
+    var postData = {
+        refresh_token: refresh_token,
+        grant_type: 'refresh_token'
+    };
+
+    var url = 'https://' + tapisSettings.hostnameV3 + '/v3/oauth2/tokens';
+    var requestSettings = {
+        url: url,
+        method: 'POST',
+        data: postData,
+        headers: {
+            'Authorization': 'Basic ' + Buffer.from(client['client_id'] + ':' + client['client_key']).toString('base64'),
+            'Content-Type': 'application/json'
+        }
+    };
+    //console.log(requestSettings);
 
     var msg = null;
     var data = await tapisV3.sendRequest(requestSettings)
