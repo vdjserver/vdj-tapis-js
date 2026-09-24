@@ -104,12 +104,247 @@ pgIO.testConnection = async function() {
     }
 }
 
-pgIO.performQueryOperation = async function(filters, error, count_only=false, download_row_handler) {
+pgIO.performQueryOperation = async function(complex_filter, assay_filter, error, count_only=false, download_row_handler) {
     let context = 'pgIO.performQueryOperation';
     let download_mode = (count_only || download_row_handler);
     let pool;
     if (download_mode) pool = pgIO.getDownloadPoolConnection();
     else pool = pgIO.getPoolConnection();
+
+    // do assay filter first if there is one
+    if (assay_filter) {
+
+        // if the assay results are empty then no need to do complex query
+    }
+
+    // TODO: field lists should come from schema
+    let complex_fields = ['species', 'akc_id'];
+    let chain_fields = ['species', 'complete_vdj', 'sequence', 'sequence_aa', 'locus', 'v_subgroup', 'v_gene', 'v_call', 'd_call', 'j_subgroup', 'j_gene', 'j_call', 'c_call', 'junction_aa', 'akc_id'];
+    let antigen_fields = ['source_molecule', 'source_species', 'akc_id'];
+    let epitope_fields = ['sequence_aa', 'modifications', 'akc_id'];
+    let mhc_fields = ['mhc_class', 'mhc_label', 'akc_id'];
+
+    if (complex_filter) {
+        let table_name = null;
+        let join_clause = "";
+        let select_fields = [];
+        let header_fields = [];
+        let queryText = 'SELECT ';
+        if (count_only) queryText += ' COUNT(*) ';
+        else {
+            for (let i in complex_fields) select_fields.push('c.' + complex_fields[i] + ' AS complex_' + complex_fields[i]);
+            for (let i in antigen_fields) select_fields.push('a.' + antigen_fields[i] + ' AS antigen_' + antigen_fields[i]);
+            for (let i in epitope_fields) select_fields.push('e.' + epitope_fields[i] + ' AS epitope_' + epitope_fields[i]);
+            for (let i in mhc_fields) select_fields.push('m.' + mhc_fields[i] + ' AS mhc_' + mhc_fields[i]);
+        }
+
+        if (complex_filter['receptor_type'] == 'alpha-beta') {
+            if (complex_filter['paired_chain_only'])
+                table_name = 'PairedAlphaBetaReceptorComposite';
+            else
+                table_name = 'AlphaBetaReceptorComposite';
+
+            join_clause += ' FROM "' + table_name + '" c';
+            join_clause += ' LEFT OUTER JOIN "BetaChain" chb ON c.trb_chain = chb.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "AlphaChain" cha ON c.tra_chain = cha.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "Antigen" a ON c.antigen = a.akc_id';
+            join_clause += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+            join_clause += ' LEFT OUTER JOIN "MajorHistocompatibilityComplex" m ON c.mhc = m.akc_id';
+            join_clause += ' JOIN "Assay_receptor_composites" arc ON arc.receptor_composites_akc_id = c.akc_id';
+            join_clause += ' JOIN "QueryAssay" qa ON qa.akc_id = arc.assay_akc_id';
+
+            if (! count_only) {
+                for (let i in chain_fields) select_fields.push('cha.' + chain_fields[i] + ' AS tra_chain_' + chain_fields[i]);
+                for (let i in chain_fields) select_fields.push('chb.' + chain_fields[i] + ' AS trb_chain_' + chain_fields[i]);
+            }
+
+        } else if (complex_filter['receptor_type'] == 'gamma-delta') {
+            if (complex_filter['paired_chain_only'])
+                table_name = 'PairedGammaDeltaReceptorComposite';
+            else
+                table_name = 'GammaDeltaReceptorComposite';
+
+            join_clause += ' FROM "' + table_name + '" c';
+            join_clause += ' LEFT OUTER JOIN "GammaChain" chg ON c.trg_chain = chg.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "DeltaChain" chd ON c.trd_chain = chd.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "Antigen" a ON c.antigen = a.akc_id';
+            join_clause += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+            join_clause += ' LEFT OUTER JOIN "MajorHistocompatibilityComplex" m ON c.mhc = m.akc_id';
+            join_clause += ' JOIN "Assay_receptor_composites" arc ON arc.receptor_composites_akc_id = c.akc_id';
+            join_clause += ' JOIN "QueryAssay" qa ON qa.akc_id = arc.assay_akc_id';
+
+            if (! count_only) {
+                for (let i in chain_fields) select_fields.push('chg.' + chain_fields[i] + ' AS trg_chain_' + chain_fields[i]);
+                for (let i in chain_fields) select_fields.push('chd.' + chain_fields[i] + ' AS trd_chain_' + chain_fields[i]);
+            }
+
+        } else if (complex_filter['receptor_type'] == 'heavy-light') {
+            if (complex_filter['paired_chain_only'])
+                table_name = 'PairedBCellReceptorComposite';
+            else
+                table_name = 'BCellReceptorComposite';
+
+            join_clause += ' FROM "' + table_name + '" c';
+            join_clause += ' LEFT OUTER JOIN "HeavyChain" chh ON c.igh_chain = chh.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "KappaChain" chk ON c.igk_chain = chk.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "LambdaChain" chl ON c.igl_chain = chl.hash_infer_vdj_sequence_aa';
+            join_clause += ' LEFT OUTER JOIN "Antigen" a ON c.antigen = a.akc_id';
+            join_clause += ' LEFT OUTER JOIN "Epitope" e ON c.epitope = e.akc_id';
+            join_clause += ' JOIN "Assay_receptor_composites" arc ON arc.receptor_composites_akc_id = c.akc_id';
+            join_clause += ' JOIN "QueryAssay" qa ON qa.akc_id = arc.assay_akc_id';
+
+            if (! count_only) {
+                for (let i in chain_fields) select_fields.push('chh.' + chain_fields[i] + ' AS igh_chain_' + chain_fields[i]);
+                for (let i in chain_fields) select_fields.push('chk.' + chain_fields[i] + ' AS igk_chain_' + chain_fields[i]);
+                for (let i in chain_fields) select_fields.push('chl.' + chain_fields[i] + ' AS igl_chain_' + chain_fields[i]);
+            }
+        }
+
+        if (! table_name) {
+            error['message'] = "Could not determine receptor type.";
+            return null;
+        }
+
+        // add select fields
+        if (! count_only) {
+            queryText += select_fields.join(', ');
+            queryText += ', arc.assay_akc_id, qa.assay_object';
+        }
+
+        // add join clause
+        queryText += join_clause;
+        queryText += ' WHERE TRUE';
+
+        // construct where clause
+        let values = [];
+        let clause = airrkb.constructWhereClause(complex_filter['filters'], error, values);
+
+        // add where clause
+        if (clause) 
+            if (download_mode)
+                queryText += ' AND (' + clause + ')';
+            else
+                queryText += ' AND (' + clause + ') LIMIT ' + (pgSettings.max_results + 1);
+        else {
+            console.log(error);
+            return null;
+        }
+
+        // perform the query
+        console.log(queryText);
+
+        let partial = false;
+        let results = [];
+        let assay_results = {};
+        try {
+            if (! download_mode) {
+                // check cost to avoid inefficient queries
+                // TODO: cost limit should be a config variable
+                const cost = await pool.query("EXPLAIN (FORMAT JSON) " + queryText, values);
+                let query_cost = cost.rows[0];
+                //config.log.info(context, JSON.stringify(query_cost,null,2));
+                if ((query_cost['QUERY PLAN']) && (query_cost['QUERY PLAN'].length > 0)) {
+                    let total_cost = query_cost['QUERY PLAN'][0]['Plan']['Total Cost'];
+                    config.log.info(context, 'query cost: ' + total_cost);
+                    // if (total_cost > 1000000) {
+                    //     error['message'] = 'Query is too inefficient to be executed.';
+                    //     return Promise.resolve(null);
+                    // }
+                }
+            }
+
+            // perform query
+            const res = await pool.query(queryText, values);
+
+            if (count_only) {
+                return Promise.resolve(res.rows[0]);
+            }
+
+            // simple hack to check partial results, ask for max + 1
+            console.log(res.rows.length);
+            if (res.rows.length == (pgSettings.max_results + 1)) partial = true;
+            console.log(partial);
+
+            // format for output response
+            for (let i in res.rows) {
+                let row = res.rows[i];
+
+                if (download_mode) {
+                    download_row_handler(header_fields, row);
+                    continue;
+                }
+
+                if (i == pgSettings.max_results) break;
+
+                let obj = { complex: {}, assay: null };
+                if (row['complex_akc_id']) {
+                    for (let j in complex_fields) obj['complex'][complex_fields[j]] = row['complex_' + complex_fields[j]];
+                }
+                if (row['tra_chain_akc_id']) {
+                    obj['complex']['tra_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['tra_chain'][chain_fields[j]] = row['tra_chain_' + chain_fields[j]];
+                }
+                if (row['trb_chain_akc_id']) {
+                    obj['complex']['trb_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['trb_chain'][chain_fields[j]] = row['trb_chain_' + chain_fields[j]];
+                }
+                if (row['trg_chain_akc_id']) {
+                    obj['complex']['trg_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['trg_chain'][chain_fields[j]] = row['trg_chain_' + chain_fields[j]];
+                }
+                if (row['trd_chain_akc_id']) {
+                    obj['complex']['trd_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['trd_chain'][chain_fields[j]] = row['trd_chain_' + chain_fields[j]];
+                }
+                if (row['igh_chain_akc_id']) {
+                    obj['complex']['igh_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['igh_chain'][chain_fields[j]] = row['igh_chain_' + chain_fields[j]];
+                }
+                if (row['igk_chain_akc_id']) {
+                    obj['complex']['igk_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['igk_chain'][chain_fields[j]] = row['igk_chain_' + chain_fields[j]];
+                }
+                if (row['igl_chain_akc_id']) {
+                    obj['complex']['igl_chain'] = {};
+                    for (let j in chain_fields) obj['complex']['igl_chain'][chain_fields[j]] = row['igl_chain_' + chain_fields[j]];
+                }
+                if (row['epitope_akc_id']) {
+                    if (!obj['complex']['epitope']) obj['complex']['epitope'] = {};
+                    for (let j in epitope_fields) obj['complex']['epitope'][epitope_fields[j]] = row['epitope_' + epitope_fields[j]];
+                }
+                if (row['antigen_akc_id']) {
+                    if (!obj['complex']['antigen']) obj['complex']['antigen'] = {};
+                    for (let j in antigen_fields) obj['complex']['antigen'][antigen_fields[j]] = row['antigen_' + antigen_fields[j]];
+                }
+                if (row['mhc_akc_id']) {
+                    if (!obj['complex']['mhc']) obj['complex']['mhc'] = {};
+                    for (let j in mhc_fields) obj['complex']['mhc'][mhc_fields[j]] = row['mhc_' + mhc_fields[j]];
+                }
+                if (row['assay_akc_id']) {
+                    obj['assay'] = row['assay_akc_id'];
+                    assay_results[row['assay_akc_id']] = row['assay_object'];
+                }
+                results.push(obj);
+            }
+
+            if (download_mode) return Promise.resolve();
+            else {
+                let result_obj = { partial: partial, Assay: assay_results };
+                if (complex_filter['receptor_type'] == 'alpha-beta') result_obj['TCRpMHC'] = results;
+                else if (complex_filter['receptor_type'] == 'gamma-delta') result_obj['TCRpMHC'] = results;
+                else if (complex_filter['receptor_type'] == 'heavy-light') result_obj['AntibodyAntigen'] = results;
+                config.log.info(context, 'Returning ' + results.length + ' complex results.');
+                return Promise.resolve(result_obj);
+            }
+        } catch (err) {
+            if (err.message.includes('timeout')) return Promise.reject({ status: 'timeout', message: 'Query timeout.' });
+            else return Promise.reject({ status: 'error', message: err.message });
+        }
+
+    }
+
+
+    /*
 
     // TODO: field lists should come from schema
     let select_fields = [];
@@ -284,7 +519,7 @@ pgIO.performQueryOperation = async function(filters, error, count_only=false, do
     } catch (err) {
         if (err.message.includes('timeout')) return Promise.reject({ status: 'timeout', message: 'Query timeout.' });
         else return Promise.reject({ status: 'error', message: err.message });
-    }
+    } */
 }
 
 pgIO.performQueryToFile = async function(filters, filename, format) {

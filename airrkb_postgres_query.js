@@ -44,8 +44,6 @@ var webhookIO = require('vdj-tapis-js/webhookIO');
 
 var config = tapisSettings.config;
 
-var pgIO = require('vdj-tapis-js/pgIO');
-
 AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
     let format_name = null;
     let fields = name.split('.');
@@ -70,27 +68,19 @@ AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
 
     // field is a table column
     if (fields.length == 1) return name;
-    if ((fields[0] == 'tcr') && (fields[1] == 'receptor')) {
-        if (fields.length == 4) {
-            if (fields[2] == 'trb_chain') format_name = 'chb.' + fields[3];
-            if (fields[2] == 'tra_chain') format_name = 'cha.' + fields[3];
-            if (fields[2] == 'trg_chain') format_name = 'chg.' + fields[3];
-            if (fields[2] == 'trd_chain') format_name = 'chd.' + fields[3];
-        }
-        if ((fields.length == 3) && (fields[2] == 'akc_id')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'tra_chain')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'trb_chain')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'trg_chain')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'trd_chain')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'ab_paired')) format_name = 't.' + fields[2];
-        if ((fields.length == 3) && (fields[2] == 'gd_paired')) format_name = 't.' + fields[2];
+    if (fields.length == 2) {
+        if (fields[0] == 'complex') format_name = 'c.' + fields[1];
+        if (fields[0] == 'trb_chain') format_name = 'chb.' + fields[1];
+        if (fields[0] == 'tra_chain') format_name = 'cha.' + fields[1];
+        if (fields[0] == 'trg_chain') format_name = 'chg.' + fields[1];
+        if (fields[0] == 'trd_chain') format_name = 'chd.' + fields[1];
+        if (fields[0] == 'igh_chain') format_name = 'chh.' + fields[1];
+        if (fields[0] == 'igk_chain') format_name = 'chk.' + fields[1];
+        if (fields[0] == 'igl_chain') format_name = 'chl.' + fields[1];
+        if (fields[0] == 'epitope') format_name = 'e.' + fields[1];
+        if (fields[0] == 'antigen') format_name = 'a.' + fields[1];
     }
-    if ((fields[0] == 'tcr') && (fields[1] == 'epitope')) {
-        if (fields.length == 3) format_name = 'e.' + fields[2];
-    }
-    if ((fields[0] == 'tcr') && (fields[1] == 'mhc')) {
-        if (fields.length == 2) format_name = 'c.' + fields[1];
-    }
+
     return format_name;
 }
 
