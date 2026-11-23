@@ -63,7 +63,7 @@ AKPostgresQuery.formatField = function(filter_type, name, stay_jsonb = false) {
                 format_name = 'qa.assay_object #>> Array[' + path + ']';
             }
         }
-    } else if (filter_type = 'complex') {
+    } else if (filter_type == 'complex') {
         // field is a table column
         if (fields.length == 1) return name;
         if (fields.length == 2) {
