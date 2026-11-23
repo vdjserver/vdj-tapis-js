@@ -1,6 +1,6 @@
 {
   "name": "vdj-tapis-js",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "VDJServer wrapper for Tapis API",
   "author": [
     {
