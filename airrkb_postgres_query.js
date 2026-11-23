@@ -44,41 +44,41 @@ var webhookIO = require('vdj-tapis-js/webhookIO');
 
 var config = tapisSettings.config;
 
-AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
+AKPostgresQuery.formatField = function(filter_type, name, stay_jsonb = false) {
     let format_name = null;
     let fields = name.split('.');
 
-    // field is in the JSON object
-    if (fields[0] == 'assay') {
-        if (fields.length == 1) {
-            format_name = 'qa.assay_object';
-            return format_name;
-        } else {
+    if (filter_type == 'assay') {
+        if (fields[0] != 'assay') return null;
+        if (fields.length == 1) return 'qa.assay_object';
+        else {
+            if (fields[1] == 'life_events') return "qa.assay_object -> 'life_events'";
+
+            // field is in the JSON object
             if (stay_jsonb) {
-                const path = fields.splice(1).map(item => `'${item}'`).join('->>');
-                format_name = 'qa.assay_object->>' + path;
-                return format_name;
+                const path = fields.slice(1).map(item => `'${item}'`).join('->');
+                format_name = 'qa.assay_object->' + path;
             } else {
-                const path = fields.splice(1).map(item => `'${item}'`).join(',');
+                const path = fields.slice(1).map(item => `'${item}'`).join(',');
                 format_name = 'qa.assay_object #>> Array[' + path + ']';
-                return format_name;
             }
         }
-    }
-
-    // field is a table column
-    if (fields.length == 1) return name;
-    if (fields.length == 2) {
-        if (fields[0] == 'complex') format_name = 'c.' + fields[1];
-        if (fields[0] == 'trb_chain') format_name = 'chb.' + fields[1];
-        if (fields[0] == 'tra_chain') format_name = 'cha.' + fields[1];
-        if (fields[0] == 'trg_chain') format_name = 'chg.' + fields[1];
-        if (fields[0] == 'trd_chain') format_name = 'chd.' + fields[1];
-        if (fields[0] == 'igh_chain') format_name = 'chh.' + fields[1];
-        if (fields[0] == 'igk_chain') format_name = 'chk.' + fields[1];
-        if (fields[0] == 'igl_chain') format_name = 'chl.' + fields[1];
-        if (fields[0] == 'epitope') format_name = 'e.' + fields[1];
-        if (fields[0] == 'antigen') format_name = 'a.' + fields[1];
+    } else if (filter_type = 'complex') {
+        // field is a table column
+        if (fields.length == 1) return name;
+        if (fields.length == 2) {
+            if (fields[0] == 'complex') format_name = 'c.' + fields[1];
+            if (fields[0] == 'trb_chain') format_name = 'chb.' + fields[1];
+            if (fields[0] == 'tra_chain') format_name = 'cha.' + fields[1];
+            if (fields[0] == 'trg_chain') format_name = 'chg.' + fields[1];
+            if (fields[0] == 'trd_chain') format_name = 'chd.' + fields[1];
+            if (fields[0] == 'igh_chain') format_name = 'chh.' + fields[1];
+            if (fields[0] == 'igk_chain') format_name = 'chk.' + fields[1];
+            if (fields[0] == 'igl_chain') format_name = 'chl.' + fields[1];
+            if (fields[0] == 'epitope') format_name = 'e.' + fields[1];
+            if (fields[0] == 'antigen') format_name = 'a.' + fields[1];
+            if (fields[0] == 'mhc') format_name = 'm.' + fields[1];
+        }
     }
 
     return format_name;
@@ -88,7 +88,7 @@ AKPostgresQuery.formatField = function(name, stay_jsonb = false) {
 // filters parameter is a JSON object that can be any number of nested
 // levels, so we recursively construct the query.
 
-AKPostgresQuery.constructWhereClause = function(filter, error, values) {
+AKPostgresQuery.constructWhereClause = function(filter_type, filter, error, values) {
     var context = 'AKPostgresQuery.constructWhereClause';
 
     console.log(filter);
@@ -216,7 +216,31 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for = operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        // special cases for GUI queries
+        if (filter_type == 'assay') {
+            // need to query life_events in a special way because keyed by IDs
+            if (content['field'].startsWith('assay.life_events')) {
+                let content_field = AKPostgresQuery.formatField(filter_type, content['field'], true);
+                // TODO: we should check the validity of these field names
+                let second_field = content['field'].replace('assay.life_events','');
+                if (content_field == null) {
+                    error['message'] = 'invalid field: ' + content['field'];
+                    return null;
+                }
+                values.push(content_value);
+                paramIndex = values.length;
+                return "jsonb_path_exists(" + content_field + ", '$.*" + second_field + " ? (@ == $targetValue)', json_build_object('targetValue'," + `$${paramIndex}` + "::text)::jsonb)"
+            } else if (content['field'].startsWith('assay.participant.genotype_set.genotype_class_list.documented_alleles')) {
+                let content_field = "qa.assay_object -> 'participant' -> 'genotype_set'";
+                let second_field = content['field'].replace('assay.participant.genotype_set.genotype_class_list.documented_alleles','');
+                values.push(content_value);
+                paramIndex = values.length;
+                return "jsonb_path_exists(" + content_field + ", '$.genotype_class_list[*].documented_alleles[*]" + second_field + " ? (@ == $targetValue)', json_build_object('targetValue'," + `$${paramIndex}` + "::text)::jsonb)"
+            }
+        }
+
+        // do the normal stuff
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -234,7 +258,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for != operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -252,7 +276,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for < operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -270,7 +294,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for <= operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -288,7 +312,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for > operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -306,7 +330,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = 'missing value for >= operator';
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -329,12 +353,17 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             return null;
         }
 
-        let content_field = AKPostgresQuery.formatField(content['field'], true);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field'], true);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
         }
-        return "to_tsvector('english', " + content_field + ") @@ to_tsquery('english', '" + content_value + "')";
+        if (filter_type == 'assay') {
+            values.push(content_value);
+            paramIndex = values.length;
+            return "to_tsvector('english', " + content_field + ") @@ websearch_to_tsquery('english', " + `$${paramIndex}` + ")";
+        } else
+            return null;
     }
     case 'prefix': {
         if (content_type != 'string') {
@@ -350,7 +379,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             return null;
         }
 
-        let content_field = AKPostgresQuery.formatField(content['field'], true);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field'], true);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -366,7 +395,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = "missing field for 'is missing' operator";
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -380,7 +409,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = "missing field for 'is not missing' operator";
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -400,7 +429,37 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = "missing field for 'in' operator";
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+
+        // special cases for GUI queries
+        if (filter_type == 'assay') {
+            // need to query life_events in a special way because keyed by IDs
+            if (content['field'].startsWith('assay.life_events')) {
+                let content_field = AKPostgresQuery.formatField(filter_type, content['field'], true);
+                // TODO: we should check the validity of these field names
+                let second_field = content['field'].replace('assay.life_events','');
+                if (content_field == null) {
+                    error['message'] = 'invalid field: ' + content['field'];
+                    return null;
+                }
+                values.push(content_value);
+                paramIndex = values.length;
+                return "jsonb_path_exists(" + content_field + ", '$.*" + second_field + " ? (@ == $targetValue[*])', json_build_object('targetValue'," + `$${paramIndex}` + "::text[])::jsonb)"
+            } else if (content['field'].startsWith('assay.participant.genotype_set.genotype_class_list.documented_alleles')) {
+                let content_field = "qa.assay_object -> 'participant' -> 'genotype_set'";
+                let second_field = content['field'].replace('assay.participant.genotype_set.genotype_class_list.documented_alleles','');
+                values.push(content_value);
+                paramIndex = values.length;
+                return "jsonb_path_exists(" + content_field + ", '$.genotype_class_list[*].documented_alleles[*]" + second_field + " ? (@ == $targetValue[*])', json_build_object('targetValue'," + `$${paramIndex}` + "::text[])::jsonb)"
+            } else {
+                let content_field = AKPostgresQuery.formatField(filter_type, content['field'], true);
+                values.push(content_value);
+                paramIndex = values.length;
+                return "jsonb_exists_any(" + content_field + ", " + `$${paramIndex}` + "::text[])"
+            }
+        }
+
+        // do the normal stuff
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -427,7 +486,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
             error['message'] = "missing field for 'exclude' operator";
             return null;
         }
-        let content_field = AKPostgresQuery.formatField(content['field']);
+        let content_field = AKPostgresQuery.formatField(filter_type, content['field']);
         if (content_field == null) {
             error['message'] = 'invalid field: ' + content['field'];
             return null;
@@ -454,7 +513,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
 
         let exp_list = [];
         for (let i = 0; i < content.length; ++i) {
-            let exp = AKPostgresQuery.constructWhereClause(content[i], error, values);
+            let exp = AKPostgresQuery.constructWhereClause(filter_type, content[i], error, values);
             if (exp == null) return null;
             exp_list.push(exp);
         }
@@ -474,7 +533,7 @@ AKPostgresQuery.constructWhereClause = function(filter, error, values) {
 
         let exp_list = [];
         for (let i = 0; i < content.length; ++i) {
-            let exp = AKPostgresQuery.constructWhereClause(content[i], error, values);
+            let exp = AKPostgresQuery.constructWhereClause(filter_type, content[i], error, values);
             if (exp == null) return null;
             exp_list.push(exp);
         }

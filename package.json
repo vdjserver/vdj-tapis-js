@@ -29,6 +29,7 @@
     "mongodb": "^3.4.1",
     "nodemailer": "",
     "nodemailer-sendmail-transport": "",
+    "pg": "^8.20.0",
     "underscore": ">=1.12.1",
     "uuid": "^9.0.1"
   },
